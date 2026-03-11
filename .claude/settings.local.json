@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__supabase__apply_migration",
+      "Bash(ls /Users/finos/Developer/Me/Huselen/Huselen.xcodeproj/*.pbxproj)",
+      "Bash(xcodebuild -project Huselen.xcodeproj -scheme Huselen -destination 'id=9685EE39-6A56-4563-9CF3-B252B3DFE397' build)"
+    ]
+  }
+}

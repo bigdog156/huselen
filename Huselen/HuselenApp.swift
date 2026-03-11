@@ -6,27 +6,49 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct HuselenApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    @State private var authManager = AuthManager()
+    @State private var syncManager = DataSyncManager()
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    init() {
+        // Global navigation bar appearance - rounded font
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithDefaultBackground()
+        navAppearance.largeTitleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 32, weight: .bold).rounded(),
+            .foregroundColor: UIColor(Theme.Colors.textPrimary)
+        ]
+        navAppearance.titleTextAttributes = [
+            .font: UIFont.systemFont(ofSize: 17, weight: .semibold).rounded(),
+            .foregroundColor: UIColor(Theme.Colors.textPrimary)
+        ]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+
+        // Tab bar appearance
+        let tabAppearance = UITabBarAppearance()
+        tabAppearance.configureWithDefaultBackground()
+        UITabBar.appearance().standardAppearance = tabAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
+                .environment(authManager)
+                .environment(syncManager)
+                .tint(Theme.Colors.warmYellow)
         }
-        .modelContainer(sharedModelContainer)
+    }
+}
+
+// MARK: - UIFont Rounded Helper
+
+extension UIFont {
+    func rounded() -> UIFont {
+        guard let descriptor = fontDescriptor.withDesign(.rounded) else { return self }
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
