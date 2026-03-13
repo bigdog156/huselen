@@ -23,6 +23,11 @@ struct AdminTabView: View {
                     Label("Gói PT", systemImage: "creditcard")
                 }
 
+            AdminAttendanceView()
+                .tabItem {
+                    Label("Chấm công", systemImage: "clock.badge.checkmark")
+                }
+
             RevenueView()
                 .tabItem {
                     Label("Doanh thu", systemImage: "chart.bar")

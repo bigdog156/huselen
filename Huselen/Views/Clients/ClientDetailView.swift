@@ -57,9 +57,7 @@ struct ClientDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(activePurchases) { purchase in
-                        Button {
-                            editingPurchase = purchase
-                        } label: {
+                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Text(purchase.package?.name ?? "Gói PT")
@@ -87,34 +85,44 @@ struct ClientDetailView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                editingPurchase = purchase
+                            } label: {
+                                Label("Chỉnh sửa gói", systemImage: "pencil")
+                            }
+                        }
                     }
                 }
             }
 
-            Section("Lịch sử tập luyện") {
-                let completedSessions = client.sessions
-                    .filter { $0.isCompleted }
-                    .sorted { $0.scheduledDate > $1.scheduledDate }
-                    .prefix(10)
-
-                if completedSessions.isEmpty {
-                    Text("Chưa có lịch sử tập")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(completedSessions)) { session in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(session.trainer?.name ?? "N/A")
-                                    .font(.subheadline)
-                                Text(session.scheduledDate, format: .dateTime.day().month().year())
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+            // Expired/used packages
+            let expiredPurchases = client.purchases.filter { $0.isExpired || $0.isFullyUsed }
+            if !expiredPurchases.isEmpty {
+                Section("Gói đã kết thúc") {
+                    ForEach(expiredPurchases) { purchase in
+                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(purchase.package?.name ?? "Gói PT")
+                                        .font(.subheadline)
+                                    Text("Mua: \(purchase.purchaseDate, format: .dateTime.day().month().year())")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if purchase.isFullyUsed {
+                                    Text("Đã hết buổi")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                } else {
+                                    Text("Hết hạn")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
                             }
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
                         }
+                        .opacity(0.6)
                     }
                 }
             }

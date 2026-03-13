@@ -13,6 +13,11 @@ struct TrainerTabView: View {
                     Label("Học viên", systemImage: "person.2")
                 }
 
+            PTAttendanceView()
+                .tabItem {
+                    Label("Chấm công", systemImage: "clock.badge.checkmark")
+                }
+
             PTStatsView()
                 .tabItem {
                     Label("Thống kê", systemImage: "chart.bar")

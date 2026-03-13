@@ -1,7 +1,7 @@
 import Foundation
 
 @Observable
-final class Trainer: Identifiable, Equatable {
+final class Trainer: Identifiable, Equatable, Hashable {
     var id: UUID = UUID()
     var profileId: UUID?
     var name: String = ""
@@ -36,5 +36,9 @@ final class Trainer: Identifiable, Equatable {
 
     static func == (lhs: Trainer, rhs: Trainer) -> Bool {
         lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }

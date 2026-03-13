@@ -1,382 +1,386 @@
 import SwiftUI
 
+
 struct MySessionsView: View {
     @Environment(DataSyncManager.self) private var syncManager
 
-    private var sessions: [TrainingGymSession] {
+    @State private var selectedDate = Date()
+    @State private var currentMonth = Date()
+    @State private var selectedSession: TrainingGymSession?
+
+    private let cal = Calendar.current
+
+    // MARK: - Data
+
+    private var allSessions: [TrainingGymSession] {
         syncManager.sessions.sorted { $0.scheduledDate < $1.scheduledDate }
     }
-    @State private var selectedDate = Date()
-    @State private var selectedSession: TrainingGymSession?
-    @State private var currentMonth = Date()
 
-    private var calendar: Calendar { Calendar.current }
-
-    // Sessions for the selected day
     private func sessions(for date: Date) -> [TrainingGymSession] {
-        sessions.filter { calendar.isDate($0.scheduledDate, inSameDayAs: date) }
-            .sorted { $0.scheduledDate < $1.scheduledDate }
+        allSessions.filter { cal.isDate($0.scheduledDate, inSameDayAs: date) }
     }
 
-    // Dates in current month that have sessions
-    private var datesWithSessions: Set<String> {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return Set(sessions.map { formatter.string(from: $0.scheduledDate) })
+    private var selectedDaySessions: [TrainingGymSession] {
+        sessions(for: selectedDate)
     }
+
+    private var sessionsThisMonth: Int {
+        allSessions.filter {
+            cal.isDate($0.scheduledDate, equalTo: currentMonth, toGranularity: .month)
+        }.count
+    }
+
+    private var streakDays: Int {
+        var streak = 0
+        var checkDate = Date()
+        for _ in 0..<60 {
+            let hit = allSessions.contains {
+                cal.isDate($0.scheduledDate, inSameDayAs: checkDate) &&
+                ($0.isCompleted || $0.isCheckedIn)
+            }
+            guard hit else { break }
+            streak += 1
+            checkDate = cal.date(byAdding: .day, value: -1, to: checkDate) ?? checkDate
+        }
+        return streak
+    }
+
+    private var monthLabel: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "vi_VN")
+        df.dateFormat = "MMMM yyyy"
+        return df.string(from: currentMonth).capitalized
+    }
+
+    // MARK: - Body
 
     var body: some View {
-        NavigationStack {
+        ScrollView {
             VStack(spacing: 0) {
-                // Calendar
-                calendarHeader
-                calendarGrid
-                    .padding(.bottom, 4)
+                headerView
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
 
-                Divider()
+                calendarSection
                     .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
 
-                // Sessions for selected day
-                selectedDaySessions
-            }
-            .background(Theme.Colors.screenBackground)
-            .navigationTitle("Lịch tập")
-            .navigationBarTitleDisplayMode(.inline)
-            .refreshable {
-                await syncManager.refresh()
-            }
-            .profileToolbar()
-            .sheet(item: $selectedSession) { session in
-                ClientSessionDetailSheet(session: session)
-            }
-            .overlay {
-                if sessions.isEmpty {
-                    ContentUnavailableView(
-                        "Chưa có lịch tập",
-                        systemImage: "calendar.badge.exclamationmark",
-                        description: Text("Liên hệ phòng gym để đặt lịch")
-                    )
+                if streakDays > 0 {
+                    streakBanner
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
                 }
+
+                sessionListSection
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 32)
             }
+        }
+        .background(Color(.systemBackground))
+        .refreshable { await syncManager.refresh() }
+        .sheet(item: $selectedSession) { session in
+            ClientSessionDetailSheet(session: session)
         }
     }
 
-    // MARK: - Calendar Header (Month navigation)
+    // MARK: - Header
 
-    private var calendarHeader: some View {
-        HStack {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    currentMonth = calendar.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
-                }
-            } label: {
-                Image(systemName: "chevron.left.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Theme.Colors.textSecondary)
+    private var headerView: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(monthLabel)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+                Text("Lịch tập")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.fitTextPrimary)
             }
-
             Spacer()
-
-            VStack(spacing: 2) {
-                Text(currentMonth.formatted(.dateTime.month(.wide).year()))
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-            }
-
-            Spacer()
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    currentMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
-                }
-            } label: {
-                Image(systemName: "chevron.right.circle.fill")
-                    .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
+            avatarCircle
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
     }
 
-    // MARK: - Calendar Grid
+    private var avatarCircle: some View {
+        let name = allSessions.first?.client?.name ?? ""
+        let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
+        let display = initials.isEmpty ? "NH" : initials.uppercased()
+        return ZStack {
+            Circle().fill(Color.fitGreen).frame(width: 44, height: 44)
+            Text(display).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+        }
+    }
 
-    private var calendarGrid: some View {
-        let daysOfWeek = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
-        let days = generateMonthDays()
+    // MARK: - Calendar
 
-        return VStack(spacing: 6) {
-            // Day-of-week header
+    private var calendarSection: some View {
+        VStack(spacing: 8) {
+            // Month navigation
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentMonth = cal.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.fitCard))
+                }
+
+                Spacer()
+
+                Text(monthLabel)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.fitTextPrimary)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentMonth = cal.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.fitCard))
+                }
+            }
+            .padding(.horizontal, 8)
+
+            // Weekday headers
             HStack(spacing: 0) {
-                ForEach(daysOfWeek, id: \.self) { day in
-                    Text(day)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.Colors.textSecondary)
+                ForEach(["CN", "T2", "T3", "T4", "T5", "T6", "T7"], id: \.self) { d in
+                    Text(d)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.fitTextTertiary)
                         .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
+            .padding(.horizontal, 4)
 
-            // Day cells grid
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
-                ForEach(days, id: \.self) { date in
+            // Day grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
+                ForEach(generateMonthDays(), id: \.self) { date in
                     if let date {
                         dayCell(date)
                     } else {
-                        Color.clear.frame(height: 42)
+                        Color.clear.frame(height: 38)
                     }
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 4)
         }
     }
 
     private func dayCell(_ date: Date) -> some View {
-        let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
-        let isToday = calendar.isDateInToday(date)
-        let daySessions = sessions(for: date)
-        let hasSession = !daySessions.isEmpty
-        let completedAll = hasSession && daySessions.allSatisfy(\.isCompleted)
-        let hasIncomplete = hasSession && daySessions.contains(where: { !$0.isCompleted })
-        let isCurrentMonth = calendar.isDate(date, equalTo: currentMonth, toGranularity: .month)
+        let isToday    = cal.isDateInToday(date)
+        let isSelected = cal.isDate(date, inSameDayAs: selectedDate)
+        let isCurrentM = cal.isDate(date, equalTo: currentMonth, toGranularity: .month)
+        let daySess    = sessions(for: date)
+        let photoURL   = daySess.compactMap { $0.clientCheckInPhotoURL }.first.flatMap { URL(string: $0) }
 
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 selectedDate = date
             }
         } label: {
-            VStack(spacing: 2) {
-                Text(date.formatted(.dateTime.day()))
-                    .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(
-                        isSelected ? .white :
-                        !isCurrentMonth ? Theme.Colors.textSecondary.opacity(0.4) :
-                        isToday ? Theme.Colors.mintGreen :
-                        Theme.Colors.textPrimary
-                    )
+            ZStack {
+                // Background
+                if isToday || isSelected {
+                    Circle().fill(Color.fitGreen)
+                }
 
-                // Session indicator dots
-                HStack(spacing: 2) {
-                    if completedAll {
-                        Circle()
-                            .fill(isSelected ? .white.opacity(0.8) : Theme.Colors.mintGreen)
-                            .frame(width: 5, height: 5)
-                    } else if hasIncomplete {
-                        Circle()
-                            .fill(isSelected ? .white.opacity(0.8) : Theme.Colors.softOrange)
-                            .frame(width: 5, height: 5)
-                    } else {
-                        Circle()
-                            .fill(.clear)
-                            .frame(width: 5, height: 5)
+                // Photo thumbnail
+                if let url = photoURL, !isToday, !isSelected {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFill().clipShape(Circle())
+                        }
                     }
+                    .overlay(Color.black.opacity(0.3).clipShape(Circle()))
+                }
+
+                // Day number
+                Text(date.formatted(.dateTime.day()))
+                    .font(.system(size: 13, weight: isToday || isSelected ? .bold : .medium))
+                    .foregroundStyle(
+                        isToday || isSelected ? .white :
+                        photoURL != nil ? .white :
+                        !isCurrentM ? Color.fitTextTertiary.opacity(0.4) :
+                        Color.fitTextPrimary
+                    )
+            }
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Streak Banner
+
+    private var streakBanner: some View {
+        HStack(spacing: 8) {
+            Text("🔥")
+                .font(.system(size: 16))
+            Text("Streak: \(streakDays) ngày liên tiếp")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color(red: 0.804, green: 0.396, blue: 0.031))
+            Spacer()
+            Text("🌟")
+                .font(.system(size: 16))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 1.0, green: 0.984, blue: 0.894))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(red: 0.992, green: 0.847, blue: 0.318), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Session List
+
+    private var sessionListSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Day header
+            HStack(spacing: 6) {
+                Text(selectedDate, format: .dateTime.weekday(.wide).day().month(.wide))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.fitTextPrimary)
+                if !selectedDaySessions.isEmpty {
+                    Text("· \(selectedDaySessions.count) buổi")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.fitTextSecondary)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 42)
+
+            if selectedDaySessions.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(Color.fitTextTertiary)
+                        Text("Không có buổi tập")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+                    .padding(.vertical, 24)
+                    Spacer()
+                }
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.fitCard))
+            } else {
+                ForEach(selectedDaySessions) { session in
+                    sessionCard(session)
+                }
+            }
+
+            // Monthly total
+            HStack {
+                Text("Tổng buổi tháng này: ")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+                Text("\(sessionsThisMonth)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.fitGreen)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func sessionCard(_ session: TrainingGymSession) -> some View {
+        let start = session.scheduledDate.formatted(date: .omitted, time: .shortened)
+        let end   = session.endDate.formatted(date: .omitted, time: .shortened)
+
+        return Button { selectedSession = session } label: {
+            HStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(session.isCompleted ? Color.fitGreen : (session.isCheckedIn ? Color.orange : Color.fitGreen))
+                    .frame(width: 4)
+                    .padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text("\(start) – \(end)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.fitTextPrimary)
+                        Spacer()
+                        sessionBadge(session)
+                    }
+                    Text("PT: \(session.trainer?.name ?? "N/A")")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.fitTextSecondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            }
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Theme.Colors.mintGreen.gradient : Color.clear.gradient)
-                    .shadow(color: isSelected ? Theme.Colors.mintGreen.opacity(0.3) : .clear, radius: 4, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(isToday && !isSelected ? Theme.Colors.mintGreen.opacity(0.5) : .clear, lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.fitCard)
             )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Selected Day Sessions
-
-    private var selectedDaySessions: some View {
-        let daySessions = sessions(for: selectedDate)
-
-        return Group {
-            // Selected date label
-            HStack {
-                Text(selectedDate.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.Colors.textPrimary)
-
-                if !daySessions.isEmpty {
-                    Text("• \(daySessions.count) buổi")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-
-            if daySessions.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "moon.zzz.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(Theme.Colors.textSecondary.opacity(0.3))
-                    Text("Không có buổi tập")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.Colors.textSecondary.opacity(0.6))
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(daySessions) { session in
-                            ClientSessionCard(session: session) {
-                                selectedSession = session
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 16)
-                }
-            }
+    @ViewBuilder
+    private func sessionBadge(_ session: TrainingGymSession) -> some View {
+        if session.isCompleted {
+            Text("Hoàn thành")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitGreen))
+        } else if session.isCheckedIn {
+            Text("Đang tập")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.orange))
+        } else {
+            Text("Sắp tới")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.fitTextSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitCard.opacity(1.5)))
+                .overlay(Capsule().strokeBorder(Color.fitTextTertiary.opacity(0.4), lineWidth: 1))
         }
     }
 
-    // MARK: - Generate Month Days
+    // MARK: - Generate month days
 
     private func generateMonthDays() -> [Date?] {
-        let interval = calendar.dateInterval(of: .month, for: currentMonth)!
-        let firstDay = interval.start
-        let firstWeekday = calendar.component(.weekday, from: firstDay)
+        guard let interval = cal.dateInterval(of: .month, for: currentMonth) else { return [] }
+        let first = interval.start
+        let firstWeekday = cal.component(.weekday, from: first)
+        let daysInMonth  = cal.range(of: .day, in: .month, for: currentMonth)?.count ?? 30
 
-        let daysInMonth = calendar.range(of: .day, in: .month, for: currentMonth)!.count
-
-        var days: [Date?] = []
-
-        // Leading blanks (weekday is 1-based, Sunday=1)
-        for _ in 0..<(firstWeekday - 1) {
-            days.append(nil)
+        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
+        for i in 0..<daysInMonth {
+            days.append(cal.date(byAdding: .day, value: i, to: first))
         }
-
-        // Actual days
-        for day in 0..<daysInMonth {
-            if let date = calendar.date(byAdding: .day, value: day, to: firstDay) {
-                days.append(date)
-            }
-        }
-
         return days
     }
 }
 
-// MARK: - Client Session Card
-
-private struct ClientSessionCard: View {
-    let session: TrainingGymSession
-    let onTap: () -> Void
-
-    private var timeText: String {
-        let start = session.scheduledDate.formatted(date: .omitted, time: .shortened)
-        let end = session.endDate.formatted(date: .omitted, time: .shortened)
-        return "\(start) – \(end)"
-    }
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 0) {
-                // Color bar
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(statusColor.gradient)
-                    .frame(width: 5)
-                    .padding(.vertical, 6)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    // Time
-                    HStack(spacing: 5) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(statusColor)
-                        Text(timeText)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Theme.Colors.textPrimary)
-
-                        Spacer()
-
-                        statusBadge
-                    }
-
-                    // Trainer
-                    HStack(spacing: 5) {
-                        Image(systemName: "figure.strengthtraining.traditional")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.Colors.softOrange)
-                        Text("PT: \(session.trainer?.name ?? "N/A")")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(.leading, 12)
-                .padding(.vertical, 10)
-                .padding(.trailing, 14)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.background)
-                    .shadow(color: statusColor.opacity(0.08), radius: 8, y: 3)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(statusColor.opacity(0.15), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var statusColor: Color {
-        if session.isCompleted { return Theme.Colors.mintGreen }
-        if session.isCheckedIn { return Theme.Colors.softOrange }
-        return Theme.Colors.skyBlue
-    }
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        if session.isCompleted {
-            Label("Xong", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Theme.Colors.mintGreen.gradient))
-        } else if session.isCheckedIn {
-            Label("Đang tập", systemImage: "figure.run")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Theme.Colors.softOrange.gradient))
-        } else {
-            Label("Sắp tới", systemImage: "clock")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color(.systemGray5)))
-        }
-    }
-}
-
-// MARK: - Client Session Detail Sheet
+// MARK: - Session Detail Sheet
 
 private struct ClientSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var session: TrainingGymSession
 
     private var statusColor: Color {
-        if session.isCompleted { return Theme.Colors.mintGreen }
-        if session.isCheckedIn { return Theme.Colors.softOrange }
-        return Theme.Colors.skyBlue
+        if session.isCompleted { return Color(red: 0.133, green: 0.773, blue: 0.369) }
+        if session.isCheckedIn { return .orange }
+        return Color(red: 0.388, green: 0.400, blue: 0.945)
     }
 
     var body: some View {
@@ -386,12 +390,12 @@ private struct ClientSessionDetailSheet: View {
                     // Colored header
                     VStack(spacing: 10) {
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.5))
+                            .fill(.white.opacity(0.5))
                             .frame(width: 40, height: 5)
                             .padding(.top, 12)
 
                         Text(session.scheduledDate.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white.opacity(0.85))
 
                         Text("\(session.scheduledDate.formatted(date: .omitted, time: .shortened)) – \(session.endDate.formatted(date: .omitted, time: .shortened))")
@@ -399,11 +403,10 @@ private struct ClientSessionDetailSheet: View {
                             .foregroundStyle(.white)
 
                         Text("\(session.duration) phút")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.7))
 
-                        detailStatusBadge
-                            .padding(.bottom, 16)
+                        detailStatusBadge.padding(.bottom, 16)
                     }
                     .frame(maxWidth: .infinity)
                     .background(statusColor.gradient)
@@ -411,21 +414,22 @@ private struct ClientSessionDetailSheet: View {
                     VStack(spacing: 16) {
                         // PT info
                         HStack(spacing: 12) {
-                            Image(systemName: "figure.strengthtraining.traditional")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Theme.Colors.softOrange)
-                                .frame(width: 42, height: 42)
-                                .background(Circle().fill(Theme.Colors.softOrange.opacity(0.12)))
-
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 1.0, green: 0.557, blue: 0.176).opacity(0.12))
+                                    .frame(width: 42, height: 42)
+                                Image(systemName: "figure.strengthtraining.traditional")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Color(red: 1.0, green: 0.557, blue: 0.176))
+                            }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Personal Trainer")
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
                                 Text(session.trainer?.name ?? "Chưa gán PT")
-                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Theme.Colors.textPrimary)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
                             }
-
                             Spacer()
                         }
                         .padding(14)
@@ -435,41 +439,50 @@ private struct ClientSessionDetailSheet: View {
                                 .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                         )
 
-                        // Check-in action (if not completed)
-                        if !session.isCompleted && session.isCheckedIn {
+                        // Check-in photo
+                        if let urlStr = session.clientCheckInPhotoURL, let url = URL(string: urlStr) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable().scaledToFill()
+                                        .frame(maxWidth: .infinity).frame(height: 200)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                default:
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(Color(.systemGray5)).frame(height: 200)
+                                        .overlay(ProgressView())
+                                }
+                            }
+                        }
+
+                        if session.isCheckedIn, let t = session.checkInTime {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.shield.fill")
-                                    .foregroundStyle(Theme.Colors.mintGreen)
+                                    .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Đã check-in")
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    if let checkInTime = session.checkInTime {
-                                        Text("lúc \(checkInTime.formatted(date: .omitted, time: .shortened))")
-                                            .font(.system(size: 12, weight: .regular, design: .rounded))
-                                            .foregroundStyle(Theme.Colors.textSecondary)
-                                    }
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("lúc \(t.formatted(date: .omitted, time: .shortened))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
                                 }
                                 Spacer()
                             }
                             .padding(14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Theme.Colors.mintGreen.opacity(0.08))
+                                    .fill(Color(red: 0.133, green: 0.773, blue: 0.369).opacity(0.08))
                             )
                         }
 
-                        // Notes
                         if !session.notes.isEmpty {
                             VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "note.text")
-                                        .foregroundStyle(Theme.Colors.lavender)
-                                    Text("Ghi chú")
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                }
+                                Label("Ghi chú", systemImage: "note.text")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
                                 Text(session.notes)
-                                    .font(.system(size: 14, weight: .regular, design: .rounded))
-                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
@@ -483,12 +496,12 @@ private struct ClientSessionDetailSheet: View {
                     .padding(16)
                 }
             }
-            .background(Theme.Colors.screenBackground)
+            .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Đóng") { dismiss() }
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.system(size: 15, weight: .semibold))
                 }
             }
         }
@@ -498,19 +511,16 @@ private struct ClientSessionDetailSheet: View {
 
     @ViewBuilder
     private var detailStatusBadge: some View {
-        HStack(spacing: 6) {
+        Group {
             if session.isCompleted {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Hoàn thành")
+                Label("Hoàn thành", systemImage: "checkmark.circle.fill")
             } else if session.isCheckedIn {
-                Image(systemName: "figure.run")
-                Text("Đang tập")
+                Label("Đang tập", systemImage: "figure.run")
             } else {
-                Image(systemName: "clock.fill")
-                Text("Chờ check-in")
+                Label("Chờ check-in", systemImage: "clock.fill")
             }
         }
-        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)

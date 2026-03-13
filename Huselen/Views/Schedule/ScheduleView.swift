@@ -1099,6 +1099,7 @@ private struct SessionDetailSheet: View {
                                     Button {
                                         withAnimation(.spring(response: 0.35)) {
                                             session.isCompleted = true
+                                            session.checkOutTime = Date()
                                         }
                                         Task { await syncManager.updateSession(session) }
                                     } label: {

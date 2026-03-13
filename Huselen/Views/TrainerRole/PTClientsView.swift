@@ -93,47 +93,55 @@ struct PTClientDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(activePurchases) { purchase in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(purchase.package?.name ?? "Gói PT")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            HStack {
-                                Text("Còn \(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
-                                    .font(.caption)
-                                Spacer()
-                                Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(purchase.package?.name ?? "Gói PT")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                HStack {
+                                    Text("Còn \(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
+                                        .font(.caption)
+                                    Spacer()
+                                    Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                ProgressView(value: Double(purchase.usedSessions), total: Double(purchase.totalSessions))
+                                    .tint(purchase.remainingSessions > 3 ? .green : .orange)
                             }
-                            ProgressView(value: Double(purchase.usedSessions), total: Double(purchase.totalSessions))
-                                .tint(purchase.remainingSessions > 3 ? .green : .orange)
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
             }
 
-            Section("Lịch sử tập") {
-                let completed = client.sessions.filter { $0.isCompleted }
-                    .sorted { $0.scheduledDate > $1.scheduledDate }
-                    .prefix(10)
-
-                if completed.isEmpty {
-                    Text("Chưa có buổi tập nào")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(completed)) { session in
-                        HStack {
-                            Text(session.scheduledDate, format: .dateTime.day().month().year())
-                                .font(.subheadline)
-                            Spacer()
-                            Text("\(session.duration) phút")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
+            // Expired/used packages
+            let expiredPurchases = client.purchases.filter { $0.isExpired || $0.isFullyUsed }
+            if !expiredPurchases.isEmpty {
+                Section("Gói đã kết thúc") {
+                    ForEach(expiredPurchases) { purchase in
+                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(purchase.package?.name ?? "Gói PT")
+                                        .font(.subheadline)
+                                    Text("\(purchase.usedSessions)/\(purchase.totalSessions) buổi")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if purchase.isFullyUsed {
+                                    Text("Đã hết buổi")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                } else {
+                                    Text("Hết hạn")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                            }
                         }
+                        .opacity(0.6)
                     }
                 }
             }

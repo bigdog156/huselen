@@ -8,8 +8,13 @@ final class TrainingGymSession: Identifiable, Equatable {
     var isCompleted: Bool = false
     var isCheckedIn: Bool = false
     var checkInTime: Date? = nil
+    var checkOutTime: Date? = nil
     var notes: String = ""
     var purchaseID: UUID? = nil
+    var isAbsent: Bool = false
+    var absenceReason: String = ""
+    var absencePhotoURL: String? = nil
+    var clientCheckInPhotoURL: String? = nil
     var createdAt: Date = Date()
 
     var trainer: Trainer?

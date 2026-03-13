@@ -3,7 +3,8 @@
     "allow": [
       "mcp__supabase__apply_migration",
       "Bash(ls /Users/finos/Developer/Me/Huselen/Huselen.xcodeproj/*.pbxproj)",
-      "Bash(xcodebuild -project Huselen.xcodeproj -scheme Huselen -destination 'id=9685EE39-6A56-4563-9CF3-B252B3DFE397' build)"
+      "Bash(xcodebuild -project Huselen.xcodeproj -scheme Huselen -destination 'id=9685EE39-6A56-4563-9CF3-B252B3DFE397' build)",
+      "Bash(xcodebuild -scheme Huselen -destination 'platform=iOS Simulator,id=AF3F1B5B-2D6B-4FFC-8848-EBF868DF84ED' build)"
     ]
   }
 }
