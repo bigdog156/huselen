@@ -57,6 +57,52 @@ struct ProfileView: View {
 
                     // Account info
                     VStack(spacing: 0) {
+                        // Gym info
+                        if let gym = authManager.currentGym {
+                            HStack {
+                                CuteIconCircle(icon: "building.2.fill", color: Theme.Colors.warmYellow, size: 36)
+                                Text("Phòng tập")
+                                    .font(Theme.Fonts.body())
+                                    .foregroundStyle(Theme.Colors.textPrimary)
+                                Spacer()
+                                Text(gym.name)
+                                    .font(Theme.Fonts.subheadline())
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                            }
+                            .padding(.vertical, 12)
+
+                            // Show invite code for admin
+                            if authManager.userRole == .owner && !gym.inviteCode.isEmpty {
+                                Divider()
+                                HStack {
+                                    CuteIconCircle(icon: "key.fill", color: Theme.Colors.mintGreen, size: 36)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Mã mời")
+                                            .font(Theme.Fonts.body())
+                                            .foregroundStyle(Theme.Colors.textPrimary)
+                                        Text("Chia sẻ cho PT/học viên")
+                                            .font(Theme.Fonts.caption())
+                                            .foregroundStyle(Theme.Colors.textSecondary)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        UIPasteboard.general.string = gym.inviteCode
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Text(gym.inviteCode)
+                                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 12))
+                                        }
+                                        .foregroundStyle(Theme.Colors.mintGreen)
+                                    }
+                                }
+                                .padding(.vertical, 12)
+                            }
+
+                            Divider()
+                        }
+
                         if let createdAt = authManager.currentUser?.createdAt {
                             HStack {
                                 CuteIconCircle(icon: "calendar", color: Theme.Colors.lavender, size: 36)

@@ -132,7 +132,7 @@ struct PTScheduleView: View {
         return Array(result.prefix(5))
     }
 
-    // MARK: - Month calendar helpers
+    // MARK: - Month Calendar Helpers
 
     private var monthTitle: String {
         currentMonth.formatted(.dateTime.month(.wide).year())
@@ -147,32 +147,58 @@ struct PTScheduleView: View {
     private var firstWeekdayOffset: Int {
         let firstDay = daysInMonth.first ?? currentMonth
         let weekday = calendar.component(.weekday, from: firstDay)
-        return (weekday + 5) % 7
+        return (weekday + 5) % 7 // Monday = 0
     }
 
     private let weekdaySymbols = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+
+    private var monthSessions: [TrainingGymSession] {
+        allSessions.filter {
+            calendar.isDate($0.scheduledDate, equalTo: currentMonth, toGranularity: .month)
+        }
+    }
+
+    private var monthTotalSessions: Int { monthSessions.count }
+    private var monthUniqueClients: Int { Set(monthSessions.compactMap { $0.client?.id }).count }
+    private var monthTotalHours: Int { monthSessions.reduce(0) { $0 + $1.duration } / 60 }
+    private var monthTotalMinutes: Int { monthSessions.reduce(0) { $0 + $1.duration } }
+
+    private func hasSessions(on date: Date) -> Bool {
+        allSessions.contains { calendar.isDate($0.scheduledDate, inSameDayAs: date) }
+    }
+
+    private func sessionDots(for date: Date) -> [Color] {
+        let daySessions = sessions(for: date)
+        guard !daySessions.isEmpty else { return [] }
+        return daySessions.prefix(3).map { session in
+            if session.isAbsent { return Theme.Colors.softPink }
+            if session.isCompleted { return Theme.Colors.mintGreen }
+            if session.isCheckedIn { return Theme.Colors.lavender }
+            return Theme.Colors.softOrange
+        }
+    }
 
     // MARK: - Body
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(spacing: 16) {
+                    // Mode toggle
                     viewModePicker
-                        .padding(.horizontal)
+                        .padding(.horizontal, 24)
                         .padding(.top, 8)
 
-                    switch viewMode {
-                    case .day:
-                        dayView
-                    case .month:
-                        monthView
+                    if viewMode == .day {
+                        dayContent
+                    } else {
+                        monthContent
                     }
                 }
                 .padding(.bottom, 20)
             }
-            .background(Theme.Colors.cream.ignoresSafeArea())
-            .navigationTitle("Lịch của tôi")
+            .background(Theme.Colors.screenBackground.ignoresSafeArea())
+            .navigationTitle("Lịch tập")
             .refreshable {
                 await syncManager.refresh()
             }
@@ -183,205 +209,341 @@ struct PTScheduleView: View {
     // MARK: - View Mode Picker
 
     private var viewModePicker: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             ForEach(ViewMode.allCases, id: \.self) { mode in
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        viewMode = mode
-                    }
+                    withAnimation(.easeInOut(duration: 0.2)) { viewMode = mode }
                 } label: {
                     Text(mode.rawValue)
-                        .font(Theme.Fonts.subheadline())
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(viewMode == mode ? .white : Theme.Colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(viewMode == mode ? Theme.Colors.softOrange : .clear)
+                            Capsule()
+                                .fill(viewMode == mode ? Theme.Colors.mintGreen : Theme.Colors.cardBackground)
                         )
                 }
                 .buttonStyle(.plain)
             }
+            Spacer()
         }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.systemGray6))
-        )
     }
 
-    // MARK: - Day View
+    // MARK: - Day Content
 
-    private var dayView: some View {
-        VStack(spacing: 16) {
-            weekdayStrip
-                .padding(.top, 12)
+    private var dayContent: some View {
+        VStack(spacing: 20) {
+            // Date navigation
+            dateNavBar
+                .padding(.horizontal, 24)
 
+            // Stats row
             if !selectedDaySessions.isEmpty {
-                dayStatsBar
-                    .padding(.horizontal)
+                statsRow
+                    .padding(.horizontal, 24)
             }
 
-            // Grouped sessions list
-            VStack(spacing: 12) {
+            // Section header + Sessions
+            VStack(alignment: .leading, spacing: 12) {
+                Text("BUỔI TẬP HÔM NAY")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .tracking(0.5)
+                    .padding(.horizontal, 24)
+
                 if selectedDayGroups.isEmpty {
                     emptyDayCard
-                        .padding(.horizontal)
+                        .padding(.horizontal, 24)
                 } else {
-                    ForEach(selectedDayGroups) { group in
-                        switch group {
-                        case .single(let session):
-                            PTSessionCard(session: session)
-                                .padding(.horizontal)
-                        case .group(let sessions):
-                            PTGroupSessionCard(sessions: sessions)
-                                .padding(.horizontal)
+                    VStack(spacing: 10) {
+                        ForEach(selectedDayGroups) { group in
+                            switch group {
+                            case .single(let session):
+                                PTSessionCard(session: session)
+                            case .group(let sessions):
+                                PTGroupSessionCard(sessions: sessions)
+                            }
                         }
                     }
+                    .padding(.horizontal, 24)
                 }
             }
 
             // Upcoming section
             if !upcomingGroups.isEmpty {
                 upcomingSection
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 24)
             }
         }
     }
 
-    // MARK: - Weekday Strip
+    // MARK: - Month Content
 
-    private var weekdayStrip: some View {
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: selectedDate)?.start ?? selectedDate
-        let weekDates = (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: startOfWeek) }
+    private var monthContent: some View {
+        VStack(spacing: 16) {
+            // Month navigation
+            monthNavBar
+                .padding(.horizontal, 24)
 
-        return VStack(spacing: 8) {
-            HStack {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedDate = calendar.date(byAdding: .weekOfYear, value: -1, to: selectedDate) ?? selectedDate
+            // Calendar grid
+            monthCalendarGrid
+                .padding(.horizontal, 24)
+
+            // Month stats
+            monthStatsRow
+                .padding(.horizontal, 24)
+
+            // Selected date section
+            VStack(alignment: .leading, spacing: 12) {
+                // Section header with date + count badge
+                HStack {
+                    Text(selectedDate.formatted(.dateTime.weekday(.wide)).uppercased() + ", " + selectedDate.formatted(.dateTime.day().month(.wide)).uppercased())
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .tracking(0.5)
+
+                    Spacer()
+
+                    if !selectedDaySessions.isEmpty {
+                        Text("\(selectedDaySessions.count) buổi")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.mintGreen)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Theme.Colors.mintGreen.opacity(0.12))
+                            )
                     }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.caption.bold())
-                        .foregroundStyle(Theme.Colors.softOrange)
                 }
+                .padding(.horizontal, 24)
 
-                Spacer()
-
-                Text(selectedDate.formatted(.dateTime.month(.wide).year()))
-                    .font(Theme.Fonts.headline())
-                    .foregroundStyle(Theme.Colors.textPrimary)
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        selectedDate = calendar.date(byAdding: .weekOfYear, value: 1, to: selectedDate) ?? selectedDate
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(Theme.Colors.softOrange)
-                }
-            }
-            .padding(.horizontal)
-
-            HStack(spacing: 0) {
-                ForEach(weekDates, id: \.self) { date in
-                    let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
-                    let isToday = calendar.isDateInToday(date)
-                    let dayGroups = groupedSessions(for: date)
-                    let hasGroup = dayGroups.contains { $0.isGroup }
-                    let sessionCount = sessions(for: date).count
-
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            selectedDate = date
-                        }
-                    } label: {
-                        VStack(spacing: 6) {
-                            Text(date.formatted(.dateTime.weekday(.narrow)))
-                                .font(Theme.Fonts.caption())
-                                .foregroundStyle(isSelected ? .white : Theme.Colors.textSecondary)
-
-                            Text("\(calendar.component(.day, from: date))")
-                                .font(Theme.Fonts.headline())
-                                .foregroundStyle(isSelected ? .white : isToday ? Theme.Colors.softOrange : Theme.Colors.textPrimary)
-
-                            // Session dots - use purple for group days
-                            HStack(spacing: 3) {
-                                if sessionCount > 0 {
-                                    if hasGroup {
-                                        // Group indicator
-                                        Image(systemName: "person.2.fill")
-                                            .font(.system(size: 7))
-                                            .foregroundStyle(isSelected ? .white : Theme.Colors.lavender)
-                                    } else {
-                                        ForEach(0..<min(sessionCount, 3), id: \.self) { _ in
-                                            Circle()
-                                                .fill(isSelected ? .white : Theme.Colors.softOrange)
-                                                .frame(width: 4, height: 4)
-                                        }
-                                    }
-                                } else {
-                                    Circle()
-                                        .fill(.clear)
-                                        .frame(width: 4, height: 4)
-                                }
+                if selectedDayGroups.isEmpty {
+                    emptyDayCard
+                        .padding(.horizontal, 24)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(selectedDayGroups) { group in
+                            switch group {
+                            case .single(let session):
+                                PTSessionCard(session: session)
+                            case .group(let sessions):
+                                PTGroupSessionCard(sessions: sessions)
                             }
-                            .frame(height: 8)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(isSelected ? Theme.Colors.softOrange : .clear)
-                        )
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 24)
                 }
             }
-            .padding(.horizontal, 8)
         }
     }
 
-    // MARK: - Day Stats Bar
+    // MARK: - Month Navigation
 
-    private var dayStatsBar: some View {
+    private var monthNavBar: some View {
+        HStack {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    currentMonth = calendar.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            Spacer()
+
+            Text("Tháng " + currentMonth.formatted(.dateTime.month(.defaultDigits)) + ", " + currentMonth.formatted(.dateTime.year()))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            Spacer()
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    currentMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+        }
+    }
+
+    // MARK: - Month Calendar Grid
+
+    private var monthCalendarGrid: some View {
+        VStack(spacing: 6) {
+            // Day headers
+            HStack(spacing: 4) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            // Week rows
+            let totalSlots = firstWeekdayOffset + daysInMonth.count
+            let weeks = (totalSlots + 6) / 7
+
+            ForEach(0..<weeks, id: \.self) { week in
+                HStack(spacing: 4) {
+                    ForEach(0..<7, id: \.self) { dayIndex in
+                        let slot = week * 7 + dayIndex
+                        let dayOffset = slot - firstWeekdayOffset
+
+                        if dayOffset >= 0, dayOffset < daysInMonth.count {
+                            let date = daysInMonth[dayOffset]
+                            let isToday = calendar.isDateInToday(date)
+                            let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                            let dots = sessionDots(for: date)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedDate = date
+                                }
+                            } label: {
+                                VStack(spacing: 2) {
+                                    Text("\(calendar.component(.day, from: date))")
+                                        .font(.system(size: 14, weight: isToday ? .heavy : .semibold, design: .rounded))
+                                        .foregroundStyle(Theme.Colors.textPrimary)
+
+                                    if !dots.isEmpty {
+                                        HStack(spacing: 2) {
+                                            ForEach(Array(dots.enumerated()), id: \.offset) { _, color in
+                                                Circle()
+                                                    .fill(color)
+                                                    .frame(width: 4, height: 4)
+                                            }
+                                        }
+                                    } else {
+                                        Spacer().frame(height: 4)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(isToday ? Theme.Colors.softOrange.opacity(0.35) : isSelected ? Theme.Colors.mintGreen.opacity(0.12) : .clear)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+        )
+    }
+
+    // MARK: - Month Stats Row
+
+    private var monthStatsRow: some View {
+        HStack(spacing: 10) {
+            monthStatCard(value: "\(monthTotalSessions)", label: "Buổi tháng", color: Theme.Colors.mintGreen)
+            monthStatCard(value: "\(monthUniqueClients)", label: "Học viên", color: Theme.Colors.lavender)
+            let hours = monthTotalMinutes / 60
+            monthStatCard(value: "\(hours)h", label: "Tổng giờ", color: Theme.Colors.softOrange)
+        }
+    }
+
+    private func monthStatCard(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(color.opacity(0.1))
+        )
+    }
+
+    // MARK: - Date Navigation
+
+    private var dateNavBar: some View {
+        HStack {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedDate = calendar.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+
+            Spacer()
+
+            Text(selectedDate.formatted(.dateTime.weekday(.wide)) + ", " + selectedDate.formatted(.dateTime.day().month(.abbreviated).year()))
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            Spacer()
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedDate = calendar.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+        }
+    }
+
+    // MARK: - Stats Row
+
+    private var statsRow: some View {
         let total = selectedDaySessions.count
-        let completed = selectedDaySessions.filter(\.isCompleted).count
-        let groupCount = selectedDayGroups.filter(\.isGroup).count
+        let clients = Set(selectedDaySessions.compactMap { $0.client?.id }).count
+        let waiting = selectedDaySessions.filter { !$0.isCompleted && !$0.isCheckedIn && !$0.isAbsent }.count
 
-        return HStack(spacing: 12) {
-            statPill(icon: "calendar", value: "\(total)", label: "buổi", color: Theme.Colors.skyBlue)
-            if groupCount > 0 {
-                statPill(icon: "person.2.fill", value: "\(groupCount)", label: "lớp nhóm", color: Theme.Colors.lavender)
-            }
-            if completed > 0 {
-                statPill(icon: "checkmark.circle", value: "\(completed)", label: "xong", color: Theme.Colors.mintGreen)
-            }
+        return HStack(spacing: 10) {
+            statCard(icon: "calendar.badge.checkmark", value: "\(total)", label: "Buổi hôm nay", color: Theme.Colors.mintGreen)
+            statCard(icon: "person.2.fill", value: "\(clients)", label: "Học viên", color: Theme.Colors.lavender)
+            statCard(icon: "timer", value: "\(waiting)", label: "Đang chờ", color: Theme.Colors.softOrange)
         }
     }
 
-    private func statPill(icon: String, value: String, label: String, color: Color) -> some View {
-        HStack(spacing: 6) {
+    private func statCard(icon: String, value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.caption2.bold())
+                .font(.system(size: 22))
                 .foregroundStyle(color)
             Text(value)
-                .font(Theme.Fonts.subheadline())
+                .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.Colors.textPrimary)
             Text(label)
-                .font(Theme.Fonts.caption())
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.Colors.textSecondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(color.opacity(0.1))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
     }
 
@@ -398,7 +560,11 @@ struct PTScheduleView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-        .cuteCard()
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+        )
     }
 
     // MARK: - Upcoming Section
@@ -418,326 +584,6 @@ struct PTScheduleView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Month View
-
-    private var monthView: some View {
-        VStack(spacing: 16) {
-            // Month navigation
-            HStack {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        currentMonth = calendar.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.caption.bold())
-                        .foregroundStyle(Theme.Colors.softOrange)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Theme.Colors.softOrange.opacity(0.1)))
-                }
-
-                Spacer()
-
-                Text(monthTitle.capitalized)
-                    .font(Theme.Fonts.title3())
-                    .foregroundStyle(Theme.Colors.textPrimary)
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        currentMonth = calendar.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(Theme.Colors.softOrange)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Theme.Colors.softOrange.opacity(0.1)))
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-
-            // Today button
-            if !calendar.isDate(currentMonth, equalTo: Date(), toGranularity: .month) {
-                Button {
-                    withAnimation {
-                        currentMonth = Date()
-                        selectedDate = Date()
-                    }
-                } label: {
-                    Text("Hôm nay")
-                        .font(Theme.Fonts.caption())
-                        .foregroundStyle(Theme.Colors.softOrange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Theme.Colors.softOrange.opacity(0.1)))
-                }
-            }
-
-            monthCalendarGrid
-                .padding(.horizontal)
-
-            // Selected day grouped sessions
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Ngày \(selectedDate.formatted(.dateTime.day().month()))")
-                    .font(Theme.Fonts.headline())
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                    .padding(.horizontal)
-
-                let dayGroups = groupedSessions(for: selectedDate)
-                if dayGroups.isEmpty {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 8) {
-                            Image(systemName: "calendar")
-                                .font(.title2)
-                                .foregroundStyle(Theme.Colors.textSecondary.opacity(0.4))
-                            Text("Không có lịch")
-                                .font(Theme.Fonts.caption())
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                        }
-                        .padding(.vertical, 20)
-                        Spacer()
-                    }
-                } else {
-                    ForEach(dayGroups) { group in
-                        switch group {
-                        case .single(let session):
-                            PTSessionCard(session: session)
-                                .padding(.horizontal)
-                        case .group(let sessions):
-                            PTGroupSessionCard(sessions: sessions)
-                                .padding(.horizontal)
-                        }
-                    }
-                }
-            }
-            .padding(.top, 8)
-        }
-    }
-
-    // MARK: - Month Calendar Grid
-
-    private var monthCalendarGrid: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
-
-        return VStack(spacing: 4) {
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(Theme.Fonts.caption())
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(height: 28)
-                }
-            }
-
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(0..<firstWeekdayOffset, id: \.self) { _ in
-                    Color.clear.frame(height: 52)
-                }
-
-                ForEach(daysInMonth, id: \.self) { date in
-                    let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
-                    let isToday = calendar.isDateInToday(date)
-                    let daySessions = sessions(for: date)
-                    let dayGroups = groupedSessions(for: date)
-                    let hasGroup = dayGroups.contains { $0.isGroup }
-                    let completedCount = daySessions.filter(\.isCompleted).count
-
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            selectedDate = date
-                        }
-                    } label: {
-                        VStack(spacing: 4) {
-                            Text("\(calendar.component(.day, from: date))")
-                                .font(isToday ? Theme.Fonts.headline() : Theme.Fonts.subheadline())
-                                .foregroundStyle(
-                                    isSelected ? .white :
-                                    isToday ? Theme.Colors.softOrange :
-                                    Theme.Colors.textPrimary
-                                )
-
-                            if !daySessions.isEmpty {
-                                HStack(spacing: 2) {
-                                    if hasGroup {
-                                        // Group indicator dot (lavender)
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(isSelected ? .white : Theme.Colors.lavender)
-                                            .frame(width: 10, height: 5)
-                                    }
-                                    ForEach(0..<min(dayGroups.filter({ !$0.isGroup }).count, 2), id: \.self) { i in
-                                        Circle()
-                                            .fill(
-                                                isSelected ? .white :
-                                                i < completedCount ? Theme.Colors.mintGreen :
-                                                Theme.Colors.softOrange
-                                            )
-                                            .frame(width: 5, height: 5)
-                                    }
-                                }
-                            } else {
-                                Spacer().frame(height: 5)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    isSelected ? Theme.Colors.softOrange :
-                                    isToday ? Theme.Colors.softOrange.opacity(0.08) :
-                                    .clear
-                                )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .cuteCard()
-    }
-}
-
-// MARK: - PT Group Session Card
-
-struct PTGroupSessionCard: View {
-    @Environment(DataSyncManager.self) private var syncManager
-    let sessions: [TrainingGymSession]
-
-    private var firstSession: TrainingGymSession { sessions.first! }
-    private var allCompleted: Bool { sessions.allSatisfy(\.isCompleted) }
-    private var anyCheckedIn: Bool { sessions.contains { $0.isCheckedIn } }
-
-    /// Shared package name if all clients have the same package
-    private var groupPackageName: String? {
-        sharedPackageName(for: sessions)
-    }
-
-    private var groupStatusColor: Color {
-        if allCompleted { return Theme.Colors.mintGreen }
-        if anyCheckedIn { return Theme.Colors.softOrange }
-        if firstSession.scheduledDate < Date() { return Theme.Colors.softPink }
-        return Theme.Colors.lavender
-    }
-
-    private var groupStatusText: String {
-        if allCompleted { return "Hoàn thành" }
-        let done = sessions.filter(\.isCompleted).count
-        if done > 0 { return "\(done)/\(sessions.count) xong" }
-        if anyCheckedIn { return "Đang tập" }
-        if firstSession.scheduledDate < Date() { return "Quá giờ" }
-        return "Sắp tới"
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Lavender accent bar for group
-            Theme.Colors.lavender
-                .frame(height: 4)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.Radius.medium, topTrailingRadius: Theme.Radius.medium))
-
-            VStack(alignment: .leading, spacing: 12) {
-                // Header
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Group label with package name
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.2.fill")
-                                .font(.caption)
-                                .foregroundStyle(Theme.Colors.lavender)
-                            if let name = groupPackageName {
-                                Text(name)
-                                    .font(Theme.Fonts.headline())
-                                    .foregroundStyle(Theme.Colors.textPrimary)
-                            } else {
-                                Text("Lớp nhóm")
-                                    .font(Theme.Fonts.headline())
-                                    .foregroundStyle(Theme.Colors.textPrimary)
-                            }
-                            Text("(\(sessions.count) học viên)")
-                                .font(Theme.Fonts.caption())
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                        }
-
-                        // Time
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                            Text("\(firstSession.scheduledDate, format: .dateTime.hour().minute()) – \(firstSession.endDate, format: .dateTime.hour().minute())")
-                                .font(Theme.Fonts.subheadline())
-                        }
-                        .foregroundStyle(Theme.Colors.textSecondary)
-
-                        if !Calendar.current.isDateInToday(firstSession.scheduledDate) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.caption2)
-                                Text(firstSession.scheduledDate, format: .dateTime.weekday(.abbreviated).day().month())
-                                    .font(Theme.Fonts.caption())
-                            }
-                            .foregroundStyle(Theme.Colors.skyBlue)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Group badge
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.2.fill")
-                            .font(.caption2)
-                        Text(groupStatusText)
-                            .font(Theme.Fonts.caption())
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill(groupStatusColor.gradient)
-                    )
-                }
-
-                // Duration
-                HStack(spacing: 6) {
-                    Image(systemName: "timer")
-                        .font(.caption2)
-                    Text("\(firstSession.duration) phút")
-                        .font(Theme.Fonts.caption())
-                }
-                .foregroundStyle(Theme.Colors.textSecondary)
-
-                // Client list
-                VStack(spacing: 0) {
-                    ForEach(sessions) { session in
-                        PTGroupClientRow(session: session, showPackageName: groupPackageName == nil)
-
-                        if session.id != sessions.last?.id {
-                            Divider()
-                                .padding(.leading, 32)
-                        }
-                    }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Theme.Colors.lavender.opacity(0.06))
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .padding(16)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-                .strokeBorder(Theme.Colors.lavender.opacity(0.15), lineWidth: 1)
-        )
     }
 }
 
@@ -873,236 +719,325 @@ private struct PTGroupClientRow: View {
     }
 }
 
+// MARK: - PT Group Session Card (overlapping sessions)
+
+struct PTGroupSessionCard: View {
+    let sessions: [TrainingGymSession]
+
+    private var firstSession: TrainingGymSession { sessions.first! }
+
+    private var groupStatusColor: Color {
+        if sessions.allSatisfy({ $0.isCompleted }) { return Theme.Colors.mintGreen }
+        if sessions.contains(where: { $0.isCheckedIn }) { return Theme.Colors.lavender }
+        return Theme.Colors.skyBlue
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header row
+            HStack(alignment: .center, spacing: 12) {
+                // Time block
+                VStack(spacing: 2) {
+                    Text(firstSession.scheduledDate.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text("\(firstSession.duration) ph")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                .frame(width: 48)
+
+                // Colored divider
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(groupStatusColor)
+                    .frame(width: 2, height: 40)
+
+                // Group info
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.Colors.lavender)
+                        Text("Nhóm \(sessions.count) học viên")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                    }
+                    Text(sessions.compactMap { $0.client?.name }.joined(separator: ", "))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+            .padding(14)
+
+            // Individual client rows
+            Divider().padding(.horizontal, 14)
+
+            VStack(spacing: 0) {
+                ForEach(sessions) { session in
+                    PTGroupClientRow(session: session, showPackageName: true)
+                    if session.id != sessions.last?.id {
+                        Divider().padding(.leading, 62)
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
+        )
+    }
+}
+
 // MARK: - PT Session Card (single session)
 
 struct PTSessionCard: View {
     @Environment(DataSyncManager.self) private var syncManager
     @Bindable var session: TrainingGymSession
     @State private var showAbsenceSheet = false
+    @State private var showMakeupSheet = false
 
     private var sessionPackageName: String? {
         packageName(for: session)
     }
 
+    private var hasMakeupSession: Bool {
+        syncManager.sessions.contains { $0.isMakeup && $0.originalSessionId == session.id }
+    }
+
     private var statusColor: Color {
         if session.isAbsent { return Theme.Colors.softPink }
         if session.isCompleted { return Theme.Colors.mintGreen }
-        if session.isCheckedIn { return Theme.Colors.softOrange }
-        if session.scheduledDate < Date() { return Theme.Colors.softPink }
-        return Theme.Colors.skyBlue
+        if session.isCheckedIn { return Theme.Colors.lavender }
+        if session.scheduledDate < Date() { return Theme.Colors.softOrange }
+        return Theme.Colors.textSecondary
     }
 
     private var statusText: String {
         if session.isAbsent { return "Nghỉ" }
-        if session.isCompleted { return "Hoàn thành" }
+        if session.isCompleted { return "Đã xong" }
         if session.isCheckedIn { return "Đang tập" }
-        if session.scheduledDate < Date() { return "Quá giờ" }
-        return "Sắp tới"
+        if session.scheduledDate < Date() { return "Sắp tới" }
+        return "Chờ xác nhận"
     }
 
-    private var statusIcon: String {
-        if session.isAbsent { return "person.slash.fill" }
-        if session.isCompleted { return "checkmark.circle.fill" }
-        if session.isCheckedIn { return "figure.run" }
-        if session.scheduledDate < Date() { return "clock.badge.exclamationmark" }
-        return "clock"
+    private var badgeBackground: Color {
+        if session.isAbsent { return Theme.Colors.softPink.opacity(0.15) }
+        if session.isCompleted { return Theme.Colors.mintGreen.opacity(0.15) }
+        if session.isCheckedIn { return Theme.Colors.lavender.opacity(0.15) }
+        if session.scheduledDate < Date() { return Theme.Colors.softOrange.opacity(0.15) }
+        return .clear
+    }
+
+    private var hasBorder: Bool {
+        !session.isAbsent && !session.isCompleted && !session.isCheckedIn && session.scheduledDate >= Date()
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            statusColor
-                .frame(height: 4)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.Radius.medium, topTrailingRadius: Theme.Radius.medium))
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.fill")
-                                .font(.caption2)
-                                .foregroundStyle(Theme.Colors.skyBlue)
-                            Text(session.client?.name ?? "Khách hàng")
-                                .font(Theme.Fonts.headline())
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                        }
-
-                        // Package name
-                        if let pkgName = sessionPackageName {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bag.fill")
-                                    .font(.system(size: 9))
-                                Text(pkgName)
-                                    .font(Theme.Fonts.caption())
-                            }
-                            .foregroundStyle(Theme.Colors.softOrange)
-                        }
-
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                            Text("\(session.scheduledDate, format: .dateTime.hour().minute()) – \(session.endDate, format: .dateTime.hour().minute())")
-                                .font(Theme.Fonts.subheadline())
-                        }
+        VStack(alignment: .leading, spacing: 12) {
+            // Main row: time | divider | info | badge
+            HStack(alignment: .center, spacing: 12) {
+                // Time block
+                VStack(spacing: 2) {
+                    Text(session.scheduledDate.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textPrimary)
+                    Text("\(session.duration) ph")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                .frame(width: 48)
 
-                        if !Calendar.current.isDateInToday(session.scheduledDate) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "calendar")
-                                    .font(.caption2)
-                                Text(session.scheduledDate, format: .dateTime.weekday(.abbreviated).day().month())
-                                    .font(Theme.Fonts.caption())
-                            }
-                            .foregroundStyle(Theme.Colors.skyBlue)
+                // Colored divider
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(statusColor)
+                    .frame(width: 2, height: 40)
+
+                // Client info
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        Text("HV: \(session.client?.name ?? "Học viên")")
+                            .font(.system(size: 13, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .lineLimit(1)
+                    }
+
+                    if let pkgName = sessionPackageName {
+                        HStack(spacing: 4) {
+                            Image(systemName: "ticket.fill")
+                                .font(.system(size: 9))
+                            Text(pkgName)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
                         }
+                        .foregroundStyle(Theme.Colors.softOrange)
+                        .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                // Status badge
+                HStack(spacing: 4) {
+                    if hasBorder {
+                        Image(systemName: "timer")
+                            .font(.system(size: 12))
+                    }
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(statusColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(badgeBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(hasBorder ? Theme.Colors.textSecondary.opacity(0.3) : .clear, lineWidth: 1)
+                )
+            }
+
+            // Absence info + makeup button
+            if session.isAbsent {
+                absenceInfoView(reason: session.absenceReason, photoURL: session.absencePhotoURL)
+
+                if hasMakeupSession {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                        Text("Đã có lịch dạy bù")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                    }
+                    .foregroundStyle(Theme.Colors.mintGreen)
+                    .padding(.leading, 62)
+                } else {
+                    Button { showMakeupSheet = true } label: {
+                        Label("Tạo lịch dạy bù", systemImage: "arrow.uturn.forward.circle.fill")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Theme.Colors.lavender.gradient))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 62)
+                }
+            }
+
+            // Makeup badge
+            if session.isMakeup {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.uturn.forward.circle.fill")
+                        .font(.system(size: 11))
+                    Text("Buổi dạy bù")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(Theme.Colors.lavender)
+                .padding(.leading, 62)
+            }
+
+            // Check-in / Check-out times
+            if session.isCompleted, let checkIn = session.checkInTime {
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.Colors.skyBlue)
+                        Text("Vào: \(checkIn, format: .dateTime.hour().minute())")
+                            .font(Theme.Fonts.caption())
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    if let checkOut = session.checkOutTime {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.left.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.Colors.mintGreen)
+                            Text("Ra: \(checkOut, format: .dateTime.hour().minute())")
+                                .font(Theme.Fonts.caption())
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                        }
+                    }
+                }
+                .padding(.leading, 62)
+            }
+
+            // Action buttons
+            if !session.isCompleted && !session.isAbsent {
+                HStack(spacing: 10) {
+                    if !session.isCheckedIn {
+                        Button {
+                            session.isCheckedIn = true
+                            session.checkInTime = Date()
+                            Task { await syncManager.updateSession(session) }
+                        } label: {
+                            Label("Check-in", systemImage: "checkmark.shield.fill")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Theme.Colors.skyBlue.gradient))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            session.isCompleted = true
+                            session.checkOutTime = Date()
+                            Task { await syncManager.updateSession(session) }
+                        } label: {
+                            Label("Hoàn thành", systemImage: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Theme.Colors.mintGreen.gradient))
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Spacer()
 
-                    HStack(spacing: 4) {
-                        Image(systemName: statusIcon)
-                            .font(.caption2)
-                        Text(statusText)
-                            .font(Theme.Fonts.caption())
+                    Button { showAbsenceSheet = true } label: {
+                        Label("Nghỉ", systemImage: "person.slash")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.Colors.softPink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Theme.Colors.softPink.opacity(0.12)))
                     }
-                    .foregroundStyle(statusColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill(statusColor.opacity(0.12))
-                    )
-                }
+                    .buttonStyle(.plain)
 
-                HStack(spacing: 6) {
-                    Image(systemName: "timer")
-                        .font(.caption2)
-                    Text("\(session.duration) phút")
-                        .font(Theme.Fonts.caption())
-                }
-                .foregroundStyle(Theme.Colors.textSecondary)
-
-                if !session.notes.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "note.text")
-                            .font(.caption2)
-                        Text(session.notes)
-                            .font(Theme.Fonts.caption())
-                    }
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .lineLimit(2)
-                }
-
-                // Absence info display
-                if session.isAbsent {
-                    absenceInfoView(reason: session.absenceReason, photoURL: session.absencePhotoURL)
-                }
-
-                // Check-in / Check-out times for completed sessions
-                if session.isCompleted, let checkIn = session.checkInTime {
-                    HStack(spacing: 16) {
+                    if session.isCheckedIn, let checkIn = session.checkInTime {
                         HStack(spacing: 4) {
-                            Image(systemName: "arrow.right.circle.fill")
+                            Image(systemName: "clock.fill")
                                 .font(.caption2)
-                                .foregroundStyle(Theme.Colors.skyBlue)
-                            Text("Vào: \(checkIn, format: .dateTime.hour().minute())")
+                            Text("Từ \(checkIn, format: .dateTime.hour().minute())")
                                 .font(Theme.Fonts.caption())
-                                .foregroundStyle(Theme.Colors.textSecondary)
                         }
-                        if let checkOut = session.checkOutTime {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.left.circle.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(Theme.Colors.mintGreen)
-                                Text("Ra: \(checkOut, format: .dateTime.hour().minute())")
-                                    .font(Theme.Fonts.caption())
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                            }
-
-                            let duration = checkOut.timeIntervalSince(checkIn)
-                            let mins = Int(duration) / 60
-                            HStack(spacing: 4) {
-                                Image(systemName: "timer")
-                                    .font(.caption2)
-                                Text(mins >= 60 ? "\(mins / 60)h\(mins % 60)p" : "\(mins) phút")
-                                    .font(Theme.Fonts.caption())
-                            }
-                            .foregroundStyle(Theme.Colors.mintGreen)
-                        }
+                        .foregroundStyle(Theme.Colors.softOrange)
                     }
                 }
-
-                // Action buttons
-                if !session.isCompleted && !session.isAbsent {
-                    HStack(spacing: 10) {
-                        if !session.isCheckedIn {
-                            Button {
-                                session.isCheckedIn = true
-                                session.checkInTime = Date()
-                                Task { await syncManager.updateSession(session) }
-                            } label: {
-                                Label("Check-in", systemImage: "checkmark.shield.fill")
-                                    .font(Theme.Fonts.caption())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        Capsule().fill(Theme.Colors.skyBlue.gradient)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            Button {
-                                session.isCompleted = true
-                                session.checkOutTime = Date()
-                                Task { await syncManager.updateSession(session) }
-                            } label: {
-                                Label("Hoàn thành", systemImage: "checkmark.circle.fill")
-                                    .font(Theme.Fonts.caption())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        Capsule().fill(Theme.Colors.mintGreen.gradient)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        Spacer()
-
-                        // Absence button
-                        Button { showAbsenceSheet = true } label: {
-                            Label("Nghỉ", systemImage: "person.slash")
-                                .font(Theme.Fonts.caption())
-                                .foregroundStyle(Theme.Colors.softPink)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    Capsule().fill(Theme.Colors.softPink.opacity(0.12))
-                                )
-                        }
-                        .buttonStyle(.plain)
-
-                        if session.isCheckedIn, let checkIn = session.checkInTime {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.fill")
-                                    .font(.caption2)
-                                Text("Từ \(checkIn, format: .dateTime.hour().minute())")
-                                    .font(Theme.Fonts.caption())
-                            }
-                            .foregroundStyle(Theme.Colors.softOrange)
-                        }
-                    }
-                }
+                .padding(.leading, 62)
             }
-            .padding(16)
         }
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
         .sheet(isPresented: $showAbsenceSheet) {
             AbsenceNoteSheet(session: session)
+        }
+        .sheet(isPresented: $showMakeupSheet) {
+            MakeupSessionSheet(originalSession: session)
         }
     }
 }
@@ -1117,10 +1052,11 @@ struct PTSessionMiniRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
+            // Date block
             VStack(spacing: 2) {
                 Text(session.scheduledDate, format: .dateTime.day())
-                    .font(Theme.Fonts.headline())
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.Colors.softOrange)
                 Text(session.scheduledDate, format: .dateTime.weekday(.abbreviated))
                     .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -1132,23 +1068,27 @@ struct PTSessionMiniRow: View {
                     .fill(Theme.Colors.softOrange.opacity(0.1))
             )
 
+            // Divider
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Theme.Colors.softOrange.opacity(0.4))
+                .frame(width: 2, height: 32)
+
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.client?.name ?? "Khách hàng")
-                    .font(Theme.Fonts.subheadline())
+                Text(session.client?.name ?? "Học viên")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.Colors.textPrimary)
-                if let pkgName = sessionPackageName {
-                    HStack(spacing: 3) {
-                        Image(systemName: "bag.fill")
-                            .font(.system(size: 8))
-                        Text(pkgName)
-                    }
-                    .font(Theme.Fonts.caption())
-                    .foregroundStyle(Theme.Colors.softOrange)
                     .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("\(session.scheduledDate, format: .dateTime.hour().minute()) – \(session.endDate, format: .dateTime.hour().minute())")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    if let pkgName = sessionPackageName {
+                        Text("• \(pkgName)")
+                            .font(.system(size: 11, weight: .regular, design: .rounded))
+                            .foregroundStyle(Theme.Colors.softOrange)
+                            .lineLimit(1)
+                    }
                 }
-                Text("\(session.scheduledDate, format: .dateTime.hour().minute()) – \(session.endDate, format: .dateTime.hour().minute())")
-                    .font(Theme.Fonts.caption())
-                    .foregroundStyle(Theme.Colors.textSecondary)
             }
 
             Spacer()
@@ -1161,9 +1101,9 @@ struct PTSessionMiniRow: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
     }
 }
@@ -1182,10 +1122,11 @@ private struct PTGroupMiniRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
+            // Date block
             VStack(spacing: 2) {
                 Text(firstSession.scheduledDate, format: .dateTime.day())
-                    .font(Theme.Fonts.headline())
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.Colors.lavender)
                 Text(firstSession.scheduledDate, format: .dateTime.weekday(.abbreviated))
                     .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -1197,25 +1138,29 @@ private struct PTGroupMiniRow: View {
                     .fill(Theme.Colors.lavender.opacity(0.1))
             )
 
+            // Divider
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Theme.Colors.lavender.opacity(0.4))
+                .frame(width: 2, height: 32)
+
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Image(systemName: "person.2.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(Theme.Colors.lavender)
-                    Text(groupPkgName ?? "Lớp nhóm")
-                        .font(Theme.Fonts.subheadline())
+                    Text(groupPkgName ?? "Nhóm \(sessions.count) HV")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.Colors.textPrimary)
-                    Text("(\(sessions.count))")
-                        .font(Theme.Fonts.caption())
-                        .foregroundStyle(Theme.Colors.textSecondary)
                 }
-                Text(clientNames)
-                    .font(Theme.Fonts.caption())
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .lineLimit(1)
-                Text("\(firstSession.scheduledDate, format: .dateTime.hour().minute()) – \(firstSession.endDate, format: .dateTime.hour().minute())")
-                    .font(Theme.Fonts.caption())
-                    .foregroundStyle(Theme.Colors.textSecondary)
+                HStack(spacing: 6) {
+                    Text("\(firstSession.scheduledDate, format: .dateTime.hour().minute()) – \(firstSession.endDate, format: .dateTime.hour().minute())")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text("• \(clientNames)")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -1228,20 +1173,21 @@ private struct PTGroupMiniRow: View {
                 let done = sessions.filter(\.isCompleted).count
                 if done > 0 {
                     Text("\(done)/\(sessions.count)")
-                        .font(Theme.Fonts.caption())
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.Colors.lavender)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule().fill(Theme.Colors.lavender.opacity(0.12))
+                        )
                 }
             }
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                .fill(.background)
-                .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                .strokeBorder(Theme.Colors.lavender.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.Colors.cardBackground)
+                .shadow(color: .black.opacity(0.04), radius: 8, y: 2)
         )
     }
 }
@@ -1448,6 +1394,210 @@ struct AbsenceNoteSheet: View {
                 }
                 .ignoresSafeArea()
             }
+        }
+    }
+}
+
+// MARK: - Makeup Session Sheet
+
+struct MakeupSessionSheet: View {
+    @Environment(DataSyncManager.self) private var syncManager
+    @Environment(\.dismiss) private var dismiss
+    let originalSession: TrainingGymSession
+
+    @State private var scheduledDate = Date()
+    @State private var duration: Int = 60
+    @State private var notes = ""
+    @State private var isProcessing = false
+    @State private var showConflictWarning = false
+
+    private var conflictingSessions: [TrainingGymSession] {
+        let makeupEnd = Calendar.current.date(byAdding: .minute, value: duration, to: scheduledDate) ?? scheduledDate
+        return syncManager.sessions.filter { s in
+            guard s.id != originalSession.id,
+                  s.trainer?.id == originalSession.trainer?.id,
+                  !s.isAbsent else { return false }
+            return scheduledDate < s.endDate && makeupEnd > s.scheduledDate
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 10) {
+                        Image(systemName: "arrow.uturn.forward.circle.fill")
+                            .font(.system(size: 36))
+                            .foregroundStyle(Theme.Colors.lavender)
+                            .frame(width: 70, height: 70)
+                            .background(Circle().fill(Theme.Colors.lavender.opacity(0.1)))
+
+                        Text("Tạo lịch dạy bù")
+                            .font(Theme.Fonts.title3())
+                            .foregroundStyle(Theme.Colors.textPrimary)
+
+                        Text(originalSession.client?.name ?? "Học viên")
+                            .font(Theme.Fonts.subheadline())
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    .padding(.top, 10)
+
+                    // Original session info
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Buổi gốc đã nghỉ")
+                            .font(Theme.Fonts.subheadline())
+                            .foregroundStyle(Theme.Colors.textPrimary)
+
+                        HStack(spacing: 16) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "calendar")
+                                    .font(.caption2)
+                                Text(originalSession.scheduledDate, format: .dateTime.weekday(.abbreviated).day().month())
+                                    .font(Theme.Fonts.caption())
+                            }
+                            HStack(spacing: 5) {
+                                Image(systemName: "clock")
+                                    .font(.caption2)
+                                Text("\(originalSession.scheduledDate, format: .dateTime.hour().minute()) – \(originalSession.endDate, format: .dateTime.hour().minute())")
+                                    .font(Theme.Fonts.caption())
+                            }
+                        }
+                        .foregroundStyle(Theme.Colors.textSecondary)
+
+                        if !originalSession.absenceReason.isEmpty {
+                            HStack(spacing: 5) {
+                                Image(systemName: "text.quote")
+                                    .font(.caption2)
+                                Text("Lý do: \(originalSession.absenceReason)")
+                                    .font(Theme.Fonts.caption())
+                            }
+                            .foregroundStyle(Theme.Colors.softPink)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.Colors.softPink.opacity(0.06))
+                    )
+                    .padding(.horizontal)
+
+                    // Date & time picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Ngày giờ dạy bù")
+                            .font(Theme.Fonts.subheadline())
+                            .foregroundStyle(Theme.Colors.textPrimary)
+
+                        DatePicker("", selection: $scheduledDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
+                            .datePickerStyle(.graphical)
+                            .tint(Theme.Colors.lavender)
+                    }
+                    .padding(.horizontal)
+
+                    // Duration
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Thời lượng (phút)")
+                            .font(Theme.Fonts.subheadline())
+                            .foregroundStyle(Theme.Colors.textPrimary)
+
+                        Picker("", selection: $duration) {
+                            Text("30 phút").tag(30)
+                            Text("45 phút").tag(45)
+                            Text("60 phút").tag(60)
+                            Text("90 phút").tag(90)
+                            Text("120 phút").tag(120)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.horizontal)
+
+                    // Notes
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Ghi chú (tuỳ chọn)")
+                            .font(Theme.Fonts.subheadline())
+                            .foregroundStyle(Theme.Colors.textPrimary)
+
+                        TextField("VD: Dạy bù buổi nghỉ ngày...", text: $notes, axis: .vertical)
+                            .lineLimit(2...4)
+                            .cuteTextField()
+                    }
+                    .padding(.horizontal)
+
+                    // Conflict warning
+                    if !conflictingSessions.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                            Text("Trùng lịch với \(conflictingSessions.count) buổi khác!")
+                                .font(Theme.Fonts.caption())
+                        }
+                        .foregroundStyle(Theme.Colors.softOrange)
+                        .padding(.horizontal)
+                    }
+
+                    // Submit
+                    Button {
+                        if !conflictingSessions.isEmpty {
+                            showConflictWarning = true
+                        } else {
+                            createMakeupSession()
+                        }
+                    } label: {
+                        if isProcessing {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label("Tạo buổi dạy bù", systemImage: "checkmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(CuteButtonStyle(color: Theme.Colors.lavender))
+                    .disabled(isProcessing)
+                    .padding(.horizontal)
+                }
+                .padding(.bottom, 30)
+            }
+            .background(Theme.Colors.cream.ignoresSafeArea())
+            .navigationTitle("Dạy bù")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Huỷ") { dismiss() }
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+            }
+            .alert("Trùng lịch", isPresented: $showConflictWarning) {
+                Button("Huỷ", role: .cancel) {}
+                Button("Vẫn tạo") { createMakeupSession() }
+            } message: {
+                Text("Buổi dạy bù trùng với \(conflictingSessions.count) buổi khác. Bạn có muốn tiếp tục?")
+            }
+        }
+    }
+
+    private func createMakeupSession() {
+        isProcessing = true
+        Task {
+            guard let trainer = originalSession.trainer,
+                  let client = originalSession.client else {
+                isProcessing = false
+                return
+            }
+            let makeup = TrainingGymSession(
+                trainer: trainer,
+                client: client,
+                scheduledDate: scheduledDate,
+                duration: duration,
+                purchaseID: originalSession.purchaseID
+            )
+            makeup.isMakeup = true
+            makeup.originalSessionId = originalSession.id
+            makeup.notes = notes
+            await syncManager.createSession(makeup)
+            isProcessing = false
+            dismiss()
         }
     }
 }

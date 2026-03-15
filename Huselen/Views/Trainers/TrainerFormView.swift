@@ -12,6 +12,11 @@ struct TrainerFormView: View {
     @State private var experienceYears = 0
     @State private var bio = ""
     @State private var isActive = true
+    @State private var revenueMode: Trainer.RevenueMode = .perPackage
+    @State private var sessionRateType: Trainer.SessionRateType = .fixed
+    @State private var sessionRate: Double = 0
+    @State private var sessionRatePercent: Double = 0
+    @State private var selectedBranchId: UUID?
     @State private var isSaving = false
 
     var isEditing: Bool { trainer != nil }
@@ -32,8 +37,65 @@ struct TrainerFormView: View {
                         .frame(minHeight: 80)
                 }
 
+                if !syncManager.branches.isEmpty {
+                    Section("Cơ sở") {
+                        Picker("Cơ sở phòng tập", selection: $selectedBranchId) {
+                            Text("Chưa chọn").tag(nil as UUID?)
+                            ForEach(syncManager.branches.filter(\.isActive)) { branch in
+                                Text(branch.name).tag(branch.id as UUID?)
+                            }
+                        }
+                    }
+                }
+
                 Section {
                     Toggle("Đang hoạt động", isOn: $isActive)
+                }
+
+                Section {
+                    Picker("Tính doanh thu", selection: $revenueMode) {
+                        ForEach(Trainer.RevenueMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+
+                    if revenueMode == .perSession {
+                        Picker("Cách tính buổi", selection: $sessionRateType) {
+                            ForEach(Trainer.SessionRateType.allCases, id: \.self) { type in
+                                Text(type.label).tag(type)
+                            }
+                        }
+
+                        if sessionRateType == .fixed {
+                            HStack {
+                                Text("Tiền / buổi (VNĐ)")
+                                Spacer()
+                                TextField("0", value: $sessionRate, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 150)
+                            }
+                        } else {
+                            HStack {
+                                Text("Phần trăm (%)")
+                                Spacer()
+                                TextField("0", value: $sessionRatePercent, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 150)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Cách tính doanh thu")
+                } footer: {
+                    if revenueMode == .perPackage {
+                        Text("Doanh thu PT = tổng giá trị các gói đã bán.")
+                    } else if sessionRateType == .fixed {
+                        Text("Doanh thu PT = số buổi đã dạy × tiền cố định mỗi buổi.")
+                    } else {
+                        Text("Doanh thu PT = số buổi × (giá gói ÷ số buổi trong gói × \(Int(sessionRatePercent))%).")
+                    }
                 }
             }
             .navigationTitle(isEditing ? "Sửa PT" : "Thêm PT mới")
@@ -58,6 +120,11 @@ struct TrainerFormView: View {
                     experienceYears = trainer.experienceYears
                     bio = trainer.bio
                     isActive = trainer.isActive
+                    revenueMode = trainer.revenueMode
+                    sessionRateType = trainer.sessionRateType
+                    sessionRate = trainer.sessionRate
+                    sessionRatePercent = trainer.sessionRatePercent
+                    selectedBranchId = trainer.branchId
                 }
             }
         }
@@ -72,6 +139,12 @@ struct TrainerFormView: View {
             trainer.experienceYears = experienceYears
             trainer.bio = bio
             trainer.isActive = isActive
+            trainer.revenueMode = revenueMode
+            trainer.sessionRateType = sessionRateType
+            trainer.sessionRate = sessionRate
+            trainer.sessionRatePercent = sessionRatePercent
+            trainer.branchId = selectedBranchId
+            trainer.branch = selectedBranchId.flatMap { bid in syncManager.branches.first { $0.id == bid } }
             Task {
                 await syncManager.updateTrainer(trainer)
                 isSaving = false
@@ -84,8 +157,14 @@ struct TrainerFormView: View {
                 specialization: specialization,
                 experienceYears: experienceYears,
                 bio: bio,
-                isActive: isActive
+                isActive: isActive,
+                revenueMode: revenueMode,
+                sessionRateType: sessionRateType,
+                sessionRate: sessionRate,
+                sessionRatePercent: sessionRatePercent
             )
+            newTrainer.branchId = selectedBranchId
+            newTrainer.branch = selectedBranchId.flatMap { bid in syncManager.branches.first { $0.id == bid } }
             Task {
                 let success = await syncManager.createTrainer(newTrainer)
                 isSaving = false

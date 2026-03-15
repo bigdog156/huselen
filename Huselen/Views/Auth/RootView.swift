@@ -41,12 +41,22 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.Colors.cream.ignoresSafeArea())
             } else if authManager.isAuthenticated {
-                ContentView()
+                if authManager.needsGymSetup {
+                    // User is authenticated but hasn't joined/created a gym
+                    if authManager.userRole == .owner {
+                        GymSetupView()
+                    } else {
+                        GymJoinView()
+                    }
+                } else {
+                    ContentView()
+                }
             } else {
                 SignInView()
             }
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: authManager.isAuthenticated)
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: authManager.isLoading)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: authManager.needsGymSetup)
     }
 }

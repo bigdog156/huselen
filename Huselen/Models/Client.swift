@@ -13,6 +13,8 @@ final class Client: Identifiable, Equatable {
     var goal: String = ""
     var notes: String = ""
     var createdAt: Date = Date()
+    var branchId: UUID?
+    var branch: GymBranch?
 
     var sessions: [TrainingGymSession] = []
     var purchases: [PackagePurchase] = []

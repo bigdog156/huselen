@@ -15,31 +15,65 @@ struct PTClientsView: View {
                 } else {
                     ForEach(clients) { client in
                         NavigationLink(destination: PTClientDetailView(client: client)) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(.green)
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.green)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(client.name)
-                                        .font(.headline)
-                                    if !client.goal.isEmpty {
-                                        Text(client.goal)
-                                            .font(.caption)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(client.name)
+                                            .font(.headline)
+                                        if !client.goal.isEmpty {
+                                            Text(client.goal)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("\(client.remainingSessions)")
+                                            .font(.headline)
+                                            .foregroundStyle(client.remainingSessions > 0 ? .green : .red)
+                                        Text("buổi còn")
+                                            .font(.caption2)
                                             .foregroundStyle(.secondary)
-                                            .lineLimit(1)
                                     }
                                 }
 
-                                Spacer()
+                                // Gói tập đang hoạt động
+                                let activePurchases = client.purchases.filter { !$0.isExpired && !$0.isFullyUsed }
+                                if !activePurchases.isEmpty {
+                                    VStack(spacing: 6) {
+                                        ForEach(activePurchases) { purchase in
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "ticket.fill")
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(.orange)
 
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text("\(client.remainingSessions)")
-                                        .font(.headline)
-                                        .foregroundStyle(client.remainingSessions > 0 ? .green : .red)
-                                    Text("buổi còn")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                                Text(purchase.package?.name ?? "Gói PT")
+                                                    .font(.caption)
+                                                    .fontWeight(.medium)
+                                                    .lineLimit(1)
+
+                                                Spacer()
+
+                                                Text("\(purchase.remainingSessions)/\(purchase.totalSessions)")
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundStyle(purchase.remainingSessions > 3 ? .green : .orange)
+                                            }
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                    .fill(Color(.systemGray6))
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             .padding(.vertical, 4)

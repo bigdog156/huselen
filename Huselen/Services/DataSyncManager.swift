@@ -3,6 +3,11 @@ import Supabase
 
 // MARK: - Supabase DTOs
 
+private struct OwnerIdRow: Codable {
+    let ownerId: UUID
+    enum CodingKeys: String, CodingKey { case ownerId = "owner_id" }
+}
+
 struct GymTrainer: Codable {
     var id: UUID?
     let ownerId: UUID
@@ -13,6 +18,11 @@ struct GymTrainer: Codable {
     var experienceYears: Int
     var bio: String
     var isActive: Bool
+    var revenueMode: String
+    var sessionRateType: String
+    var sessionRate: Double
+    var sessionRatePercent: Double
+    var branchId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -22,6 +32,11 @@ struct GymTrainer: Codable {
         case experienceYears = "experience_years"
         case bio
         case isActive = "is_active"
+        case revenueMode = "revenue_mode"
+        case sessionRateType = "session_rate_type"
+        case sessionRate = "session_rate"
+        case sessionRatePercent = "session_rate_percent"
+        case branchId = "branch_id"
     }
 }
 
@@ -37,6 +52,7 @@ struct GymClient: Codable {
     var muscleMass: Double
     var goal: String
     var notes: String
+    var branchId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -46,6 +62,7 @@ struct GymClient: Codable {
         case bodyFat = "body_fat"
         case muscleMass = "muscle_mass"
         case goal, notes
+        case branchId = "branch_id"
     }
 }
 
@@ -66,6 +83,8 @@ struct GymSession: Codable {
     var absenceReason: String
     var absencePhotoUrl: String?
     var clientCheckInPhotoUrl: String?
+    var isMakeup: Bool
+    var originalSessionId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -84,6 +103,8 @@ struct GymSession: Codable {
         case absenceReason = "absence_reason"
         case absencePhotoUrl = "absence_photo_url"
         case clientCheckInPhotoUrl = "client_check_in_photo_url"
+        case isMakeup = "is_makeup"
+        case originalSessionId = "original_session_id"
     }
 }
 
@@ -143,6 +164,22 @@ struct GymAttendance: Codable {
     }
 }
 
+struct GymBranchDTO: Codable {
+    var id: UUID?
+    let ownerId: UUID
+    var name: String
+    var address: String
+    var phone: String
+    var isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ownerId = "owner_id"
+        case name, address, phone
+        case isActive = "is_active"
+    }
+}
+
 // MARK: - DataSyncManager
 
 @MainActor
@@ -159,6 +196,8 @@ final class DataSyncManager {
     var purchases: [PackagePurchase] = []
     var attendances: [TrainerAttendance] = []
     var gymWiFiSSIDs: [String] = []
+    var branches: [GymBranch] = []
+    var selectedBranchId: UUID?
 
     func refresh() async {
         await fetchAll(role: lastRole)
@@ -168,12 +207,32 @@ final class DataSyncManager {
         try await supabase.auth.session.user.id
     }
 
+    /// Returns the gym owner's ID for data creation.
+    /// For PT role, returns the trainer's owner_id so admin can see the data.
+    private func dataOwnerId() async throws -> UUID {
+        let userId = try await supabase.auth.session.user.id
+        if lastRole == .trainer {
+            if let trainer = trainers.first(where: { $0.profileId == userId }),
+               let ownerRow: OwnerIdRow = try? await supabase
+                .from("trainers")
+                .select("owner_id")
+                .eq("id", value: trainer.id.uuidString)
+                .single()
+                .execute()
+                .value {
+                return ownerRow.ownerId
+            }
+        }
+        return userId
+    }
+
     func clearAll() {
         trainers = []
         clients = []
         sessions = []
         purchases = []
         attendances = []
+        branches = []
     }
 
     // MARK: - Trainer CRUD
@@ -190,7 +249,12 @@ final class DataSyncManager {
                 specialization: trainer.specialization,
                 experienceYears: trainer.experienceYears,
                 bio: trainer.bio,
-                isActive: trainer.isActive
+                isActive: trainer.isActive,
+                revenueMode: trainer.revenueMode.rawValue,
+                sessionRateType: trainer.sessionRateType.rawValue,
+                sessionRate: trainer.sessionRate,
+                sessionRatePercent: trainer.sessionRatePercent,
+                branchId: trainer.branchId
             )
             let result: GymTrainer = try await supabase
                 .from("trainers")
@@ -219,6 +283,11 @@ final class DataSyncManager {
                     "experience_years": AnyJSON.integer(trainer.experienceYears),
                     "bio": AnyJSON.string(trainer.bio),
                     "is_active": AnyJSON.bool(trainer.isActive),
+                    "revenue_mode": AnyJSON.string(trainer.revenueMode.rawValue),
+                    "session_rate_type": AnyJSON.string(trainer.sessionRateType.rawValue),
+                    "session_rate": AnyJSON.double(trainer.sessionRate),
+                    "session_rate_percent": AnyJSON.double(trainer.sessionRatePercent),
+                    "branch_id": trainer.branchId.map { AnyJSON.string($0.uuidString) } ?? .null,
                 ])
                 .eq("id", value: trainer.id.uuidString)
                 .execute()
@@ -262,7 +331,8 @@ final class DataSyncManager {
                 bodyFat: client.bodyFat,
                 muscleMass: client.muscleMass,
                 goal: client.goal,
-                notes: client.notes
+                notes: client.notes,
+                branchId: client.branchId
             )
             let result: GymClient = try await supabase
                 .from("clients")
@@ -293,6 +363,7 @@ final class DataSyncManager {
                     "muscle_mass": AnyJSON.double(client.muscleMass),
                     "goal": AnyJSON.string(client.goal),
                     "notes": AnyJSON.string(client.notes),
+                    "branch_id": client.branchId.map { AnyJSON.string($0.uuidString) } ?? .null,
                 ])
                 .eq("id", value: client.id.uuidString)
                 .execute()
@@ -325,7 +396,7 @@ final class DataSyncManager {
     @discardableResult
     func createSession(_ session: TrainingGymSession) async -> Bool {
         do {
-            let userId = try await ownerId()
+            let userId = try await dataOwnerId()
             let dto = GymSession(
                 ownerId: userId,
                 trainerId: session.trainer?.id,
@@ -341,7 +412,9 @@ final class DataSyncManager {
                 isAbsent: session.isAbsent,
                 absenceReason: session.absenceReason,
                 absencePhotoUrl: session.absencePhotoURL,
-                clientCheckInPhotoUrl: session.clientCheckInPhotoURL
+                clientCheckInPhotoUrl: session.clientCheckInPhotoURL,
+                isMakeup: session.isMakeup,
+                originalSessionId: session.originalSessionId
             )
             let result: GymSession = try await supabase
                 .from("training_sessions")
@@ -380,7 +453,9 @@ final class DataSyncManager {
                     isAbsent: session.isAbsent,
                     absenceReason: session.absenceReason,
                     absencePhotoUrl: session.absencePhotoURL,
-                    clientCheckInPhotoUrl: session.clientCheckInPhotoURL
+                    clientCheckInPhotoUrl: session.clientCheckInPhotoURL,
+                    isMakeup: session.isMakeup,
+                    originalSessionId: session.originalSessionId
                 )
             }
             let results: [GymSession] = try await supabase
@@ -404,15 +479,33 @@ final class DataSyncManager {
 
     func updateSession(_ session: TrainingGymSession) async {
         do {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
             var updates: [String: AnyJSON] = [
+                "scheduled_date": .string(formatter.string(from: session.scheduledDate)),
+                "duration": .integer(session.duration),
                 "is_completed": .bool(session.isCompleted),
                 "is_checked_in": .bool(session.isCheckedIn),
                 "notes": .string(session.notes),
                 "is_absent": .bool(session.isAbsent),
                 "absence_reason": .string(session.absenceReason),
+                "is_makeup": .bool(session.isMakeup),
             ]
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let originalSessionId = session.originalSessionId {
+                updates["original_session_id"] = .string(originalSessionId.uuidString)
+            }
+            if let trainerId = session.trainer?.id {
+                updates["trainer_id"] = .string(trainerId.uuidString)
+            }
+            if let clientId = session.client?.id {
+                updates["client_id"] = .string(clientId.uuidString)
+            }
+            if let purchaseID = session.purchaseID {
+                updates["purchase_id"] = .string(purchaseID.uuidString)
+            } else {
+                updates["purchase_id"] = .null
+            }
             if let checkInTime = session.checkInTime {
                 updates["check_in_time"] = .string(formatter.string(from: checkInTime))
             }
@@ -554,10 +647,36 @@ final class DataSyncManager {
         defer { isSyncing = false }
 
         do {
-            _ = try await ownerId()
+            let userId = try await ownerId()
 
             // Fetch trainers
-            let remoteTrainers: [GymTrainer] = try await supabase.from("trainers").select().execute().value
+            let remoteTrainers: [GymTrainer]
+            if role == .trainer {
+                // PT: fetch own trainer record via profile_id
+                remoteTrainers = (try? await supabase.from("trainers").select()
+                    .eq("profile_id", value: userId.uuidString).execute().value) ?? []
+            } else {
+                remoteTrainers = try await supabase.from("trainers").select().execute().value
+            }
+            // Fetch branches
+            let remoteBranches: [GymBranchDTO] = (try? await supabase.from("gym_branches").select().execute().value) ?? []
+            var newBranches: [GymBranch] = []
+            for remote in remoteBranches {
+                guard let remoteId = remote.id else { continue }
+                if let existing = branches.first(where: { $0.id == remoteId }) {
+                    existing.name = remote.name
+                    existing.address = remote.address
+                    existing.phone = remote.phone
+                    existing.isActive = remote.isActive
+                    newBranches.append(existing)
+                } else {
+                    let b = GymBranch(name: remote.name, address: remote.address, phone: remote.phone, isActive: remote.isActive)
+                    b.id = remoteId
+                    newBranches.append(b)
+                }
+            }
+            let branchById = Dictionary(uniqueKeysWithValues: newBranches.map { ($0.id, $0) })
+
             var newTrainers: [Trainer] = []
             for remote in remoteTrainers {
                 guard let remoteId = remote.id else { continue }
@@ -569,16 +688,38 @@ final class DataSyncManager {
                     existing.bio = remote.bio
                     existing.isActive = remote.isActive
                     existing.profileId = remote.profileId
+                    existing.revenueMode = Trainer.RevenueMode(rawValue: remote.revenueMode) ?? .perPackage
+                    existing.sessionRateType = Trainer.SessionRateType(rawValue: remote.sessionRateType) ?? .fixed
+                    existing.sessionRate = remote.sessionRate
+                    existing.sessionRatePercent = remote.sessionRatePercent
+                    existing.branchId = remote.branchId
+                    existing.branch = remote.branchId.flatMap { branchById[$0] }
                     newTrainers.append(existing)
                 } else {
-                    let t = Trainer(name: remote.name, phone: remote.phone, specialization: remote.specialization, experienceYears: remote.experienceYears, bio: remote.bio, isActive: remote.isActive, profileId: remote.profileId)
+                    let t = Trainer(name: remote.name, phone: remote.phone, specialization: remote.specialization, experienceYears: remote.experienceYears, bio: remote.bio, isActive: remote.isActive, profileId: remote.profileId, revenueMode: Trainer.RevenueMode(rawValue: remote.revenueMode) ?? .perPackage, sessionRateType: Trainer.SessionRateType(rawValue: remote.sessionRateType) ?? .fixed, sessionRate: remote.sessionRate, sessionRatePercent: remote.sessionRatePercent)
                     t.id = remoteId
+                    t.branchId = remote.branchId
+                    t.branch = remote.branchId.flatMap { branchById[$0] }
                     newTrainers.append(t)
                 }
             }
 
-            // Fetch clients
-            let remoteClients: [GymClient] = try await supabase.from("clients").select().execute().value
+            // For PT: also fetch clients linked to their sessions
+            let remoteClients: [GymClient]
+            if role == .trainer, let trainerId = newTrainers.first?.id {
+                // Get client IDs from trainer's sessions first
+                let trainerSessions: [GymSession] = (try? await supabase.from("training_sessions").select()
+                    .eq("trainer_id", value: trainerId.uuidString).execute().value) ?? []
+                let clientIds = Set(trainerSessions.compactMap { $0.clientId })
+                if clientIds.isEmpty {
+                    remoteClients = []
+                } else {
+                    remoteClients = (try? await supabase.from("clients").select()
+                        .in("id", values: clientIds.map { $0.uuidString }).execute().value) ?? []
+                }
+            } else {
+                remoteClients = try await supabase.from("clients").select().execute().value
+            }
             var newClients: [Client] = []
             for remote in remoteClients {
                 guard let remoteId = remote.id else { continue }
@@ -592,10 +733,14 @@ final class DataSyncManager {
                     existing.goal = remote.goal
                     existing.notes = remote.notes
                     existing.profileId = remote.profileId
+                    existing.branchId = remote.branchId
+                    existing.branch = remote.branchId.flatMap { branchById[$0] }
                     newClients.append(existing)
                 } else {
                     let c = Client(name: remote.name, phone: remote.phone, email: remote.email, weight: remote.weight, bodyFat: remote.bodyFat, muscleMass: remote.muscleMass, goal: remote.goal, notes: remote.notes, profileId: remote.profileId)
                     c.id = remoteId
+                    c.branchId = remote.branchId
+                    c.branch = remote.branchId.flatMap { branchById[$0] }
                     newClients.append(c)
                 }
             }
@@ -604,15 +749,21 @@ final class DataSyncManager {
             let trainerById = Dictionary(uniqueKeysWithValues: newTrainers.map { ($0.id, $0) })
             let clientById = Dictionary(uniqueKeysWithValues: newClients.map { ($0.id, $0) })
 
-            // Fetch packages for name lookup
-            let remotePackages: [GymPTPackage] = try await supabase.from("pt_packages").select().execute().value
+            // Fetch packages for name lookup (use try? for non-owner roles)
+            let remotePackages: [GymPTPackage] = (try? await supabase.from("pt_packages").select().execute().value) ?? []
             let packageById = Dictionary(uniqueKeysWithValues: remotePackages.compactMap { pkg -> (UUID, GymPTPackage)? in
                 guard let id = pkg.id else { return nil }
                 return (id, pkg)
             })
 
             // Fetch purchases
-            let remotePurchases: [GymPurchase] = try await supabase.from("package_purchases").select().execute().value
+            let remotePurchases: [GymPurchase]
+            if role == .trainer, let trainerId = newTrainers.first?.id {
+                remotePurchases = (try? await supabase.from("package_purchases").select()
+                    .eq("trainer_id", value: trainerId.uuidString).execute().value) ?? []
+            } else {
+                remotePurchases = try await supabase.from("package_purchases").select().execute().value
+            }
             var newPurchases: [PackagePurchase] = []
             for remote in remotePurchases {
                 guard let remoteId = remote.id else { continue }
@@ -627,9 +778,15 @@ final class DataSyncManager {
                     existing.scheduleMinute = remote.scheduleMinute
                     if let tid = remote.trainerId { existing.trainer = trainerById[tid] }
                     if let cid = remote.clientId { existing.client = clientById[cid] }
-                    // Update package name from pt_packages
+                    // Update package from pt_packages
                     if let pkgId = remote.packageId, let remotePkg = packageById[pkgId] {
-                        existing.package?.name = remotePkg.name
+                        if let existingPkg = existing.package {
+                            existingPkg.name = remotePkg.name
+                        } else {
+                            let pkg = PTPackage(name: remotePkg.name, totalSessions: remote.totalSessions, price: remote.price)
+                            pkg.id = pkgId
+                            existing.package = pkg
+                        }
                     }
                     newPurchases.append(existing)
                 } else {
@@ -676,6 +833,8 @@ final class DataSyncManager {
                     existing.absenceReason = remote.absenceReason
                     existing.absencePhotoURL = remote.absencePhotoUrl
                     existing.clientCheckInPhotoURL = remote.clientCheckInPhotoUrl
+                    existing.isMakeup = remote.isMakeup
+                    existing.originalSessionId = remote.originalSessionId
                     if let tid = remote.trainerId { existing.trainer = trainerById[tid] }
                     if let cid = remote.clientId { existing.client = clientById[cid] }
                     newSessions.append(existing)
@@ -699,6 +858,8 @@ final class DataSyncManager {
                     session.absenceReason = remote.absenceReason
                     session.absencePhotoURL = remote.absencePhotoUrl
                     session.clientCheckInPhotoURL = remote.clientCheckInPhotoUrl
+                    session.isMakeup = remote.isMakeup
+                    session.originalSessionId = remote.originalSessionId
                     newSessions.append(session)
                 }
             }
@@ -713,8 +874,14 @@ final class DataSyncManager {
                 c.purchases = newPurchases.filter { $0.client?.id == c.id }
             }
 
-            // Fetch attendance
-            let remoteAttendances: [GymAttendance] = try await supabase.from("trainer_attendance").select().execute().value
+            // Fetch attendance (use try? to avoid failing the entire fetch)
+            let remoteAttendances: [GymAttendance]
+            if role == .trainer, let trainerId = newTrainers.first?.id {
+                remoteAttendances = (try? await supabase.from("trainer_attendance").select()
+                    .eq("trainer_id", value: trainerId.uuidString).execute().value) ?? []
+            } else {
+                remoteAttendances = (try? await supabase.from("trainer_attendance").select().execute().value) ?? []
+            }
             var newAttendances: [TrainerAttendance] = []
             for remote in remoteAttendances {
                 guard let remoteId = remote.id else { continue }
@@ -741,6 +908,7 @@ final class DataSyncManager {
             }
 
             // Update arrays
+            branches = newBranches
             trainers = newTrainers
             clients = newClients
             purchases = newPurchases
@@ -748,10 +916,82 @@ final class DataSyncManager {
             attendances = newAttendances
 
         } catch {
-            errorMessage = "Chưa đăng nhập"
+            print("fetchAll error: \(error)")
+            if "\(error)".contains("Auth") || "\(error)".contains("session") {
+                errorMessage = "Chưa đăng nhập"
+            } else {
+                errorMessage = "Lỗi tải dữ liệu: \(error.localizedDescription)"
+            }
         }
 
         await fetchGymWiFiSSIDs()
+    }
+
+    // MARK: - Branch CRUD
+
+    @discardableResult
+    func createBranch(_ branch: GymBranch) async -> Bool {
+        do {
+            let userId = try await ownerId()
+            let dto = GymBranchDTO(
+                ownerId: userId,
+                name: branch.name,
+                address: branch.address,
+                phone: branch.phone,
+                isActive: branch.isActive
+            )
+            let result: GymBranchDTO = try await supabase
+                .from("gym_branches")
+                .insert(dto)
+                .select()
+                .single()
+                .execute()
+                .value
+            branch.id = result.id!
+            branches.append(branch)
+            return true
+        } catch {
+            errorMessage = "Lỗi tạo cơ sở: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func updateBranch(_ branch: GymBranch) async {
+        do {
+            try await supabase
+                .from("gym_branches")
+                .update([
+                    "name": AnyJSON.string(branch.name),
+                    "address": AnyJSON.string(branch.address),
+                    "phone": AnyJSON.string(branch.phone),
+                    "is_active": AnyJSON.bool(branch.isActive),
+                ])
+                .eq("id", value: branch.id.uuidString)
+                .execute()
+        } catch {
+            errorMessage = "Lỗi cập nhật cơ sở: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteBranch(_ branch: GymBranch) async {
+        do {
+            try await supabase
+                .from("gym_branches")
+                .delete()
+                .eq("id", value: branch.id.uuidString)
+                .execute()
+            branches.removeAll { $0.id == branch.id }
+            for trainer in trainers where trainer.branchId == branch.id {
+                trainer.branchId = nil
+                trainer.branch = nil
+            }
+            for client in clients where client.branchId == branch.id {
+                client.branchId = nil
+                client.branch = nil
+            }
+        } catch {
+            errorMessage = "Lỗi xoá cơ sở: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Gym Settings

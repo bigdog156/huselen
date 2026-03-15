@@ -3,6 +3,7 @@ import SwiftUI
 struct PTStatsView: View {
     @Environment(DataSyncManager.self) private var syncManager
 
+    private var myTrainer: Trainer? { syncManager.trainers.first }
     private var sessions: [TrainingGymSession] { syncManager.sessions }
     private var purchases: [PackagePurchase] { syncManager.purchases }
 
@@ -18,14 +19,14 @@ struct PTStatsView: View {
     }
 
     var thisMonthRevenue: Double {
-        let calendar = Calendar.current
-        return purchases.filter {
-            calendar.isDate($0.purchaseDate, equalTo: Date(), toGranularity: .month)
-        }.reduce(0) { $0 + $1.price }
+        if let trainer = myTrainer {
+            return trainer.revenueInMonth(Date())
+        }
+        return 0
     }
 
     var totalRevenue: Double {
-        purchases.reduce(0) { $0 + $1.price }
+        myTrainer?.totalRevenue ?? 0
     }
 
     var uniqueClientCount: Int {

@@ -25,7 +25,22 @@ struct TrainerDetailView: View {
                 }
             }
 
-            Section("Thống kê") {
+            Section("Doanh thu") {
+                LabeledContent("Cách tính", value: trainer.revenueMode.label)
+                if trainer.revenueMode == .perSession {
+                    LabeledContent("Loại", value: trainer.sessionRateType.label)
+                    if trainer.sessionRateType == .fixed {
+                        LabeledContent("Tiền / buổi") {
+                            Text(formatVND(trainer.sessionRate))
+                                .foregroundStyle(.blue)
+                        }
+                    } else {
+                        LabeledContent("Phần trăm") {
+                            Text("\(Int(trainer.sessionRatePercent))%")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
                 LabeledContent("Tổng buổi đã dạy", value: "\(trainer.completedSessionsCount)")
                 LabeledContent("Tổng doanh thu") {
                     Text(formatVND(trainer.totalRevenue))

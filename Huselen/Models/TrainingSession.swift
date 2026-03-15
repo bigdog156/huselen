@@ -15,6 +15,8 @@ final class TrainingGymSession: Identifiable, Equatable {
     var absenceReason: String = ""
     var absencePhotoURL: String? = nil
     var clientCheckInPhotoURL: String? = nil
+    var isMakeup: Bool = false
+    var originalSessionId: UUID? = nil
     var createdAt: Date = Date()
 
     var trainer: Trainer?

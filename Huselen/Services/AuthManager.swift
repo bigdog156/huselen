@@ -10,12 +10,13 @@ enum UserRole: String, Codable {
 
 struct UserProfile: Codable {
     let id: UUID
-    let fullName: String
-    let phone: String
+    let fullName: String?
+    let phone: String?
     let role: UserRole
-    let avatarUrl: String
-    let createdAt: Date
-    let updatedAt: Date
+    let avatarUrl: String?
+    let createdAt: Date?
+    let updatedAt: Date?
+    let gymId: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -25,10 +26,11 @@ struct UserProfile: Codable {
         case avatarUrl = "avatar_url"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case gymId = "gym_id"
     }
 }
 
-@Observable
+@MainActor @Observable
 final class AuthManager {
     var isAuthenticated = false
     var isLoading = true
@@ -36,11 +38,57 @@ final class AuthManager {
     var userProfile: UserProfile?
     var userRole: UserRole = .owner
     var errorMessage: String?
+    var currentGym: Gym?
+
+    var needsGymSetup: Bool {
+        isAuthenticated && !isLoading && userProfile?.gymId == nil
+    }
+
+    private nonisolated(unsafe) var authListenerTask: Task<Void, Never>?
 
     init() {
-        Task {
-            await checkSession()
+        authListenerTask = Task { [weak self] in
+            for await (event, session) in supabase.auth.authStateChanges {
+                guard let self else { return }
+                switch event {
+                case .initialSession:
+                    if let session {
+                        self.currentUser = session.user
+                        self.isAuthenticated = true
+                        await self.fetchProfile()
+                    } else {
+                        self.isAuthenticated = false
+                        self.currentUser = nil
+                        self.userProfile = nil
+                    }
+                    self.isLoading = false
+                case .signedIn:
+                    if let session {
+                        self.currentUser = session.user
+                        self.isAuthenticated = true
+                        await self.fetchProfile()
+                    }
+                    self.isLoading = false
+                case .signedOut:
+                    self.isAuthenticated = false
+                    self.currentUser = nil
+                    self.userProfile = nil
+                    self.userRole = .owner
+                    self.currentGym = nil
+                    self.isLoading = false
+                case .tokenRefreshed:
+                    if let session {
+                        self.currentUser = session.user
+                    }
+                default:
+                    break
+                }
+            }
         }
+    }
+
+    deinit {
+        authListenerTask?.cancel()
     }
 
     func checkSession() async {
@@ -70,8 +118,112 @@ final class AuthManager {
                 .value
             userProfile = profile
             userRole = profile.role
+            // Fetch gym info if user has a gym
+            if let gymId = profile.gymId {
+                await fetchGym(gymId: gymId)
+            } else {
+                currentGym = nil
+            }
         } catch {
             print("Error fetching profile: \(error)")
+            errorMessage = "Lỗi tải thông tin: \(error.localizedDescription)"
+        }
+    }
+
+    func fetchGym(gymId: UUID) async {
+        do {
+            let dto: GymDTO = try await supabase
+                .from("gyms")
+                .select()
+                .eq("id", value: gymId.uuidString)
+                .single()
+                .execute()
+                .value
+            let gym = Gym(name: dto.name, address: dto.address, phone: dto.phone, ownerId: dto.ownerId, inviteCode: dto.inviteCode ?? "")
+            gym.id = dto.id ?? gymId
+            gym.logoUrl = dto.logoUrl
+            gym.createdAt = dto.createdAt
+            currentGym = gym
+        } catch {
+            print("Error fetching gym: \(error)")
+        }
+    }
+
+    /// Admin creates a new gym
+    func createGym(name: String, address: String, phone: String) async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        errorMessage = nil
+        do {
+            let dto = GymDTO(
+                name: name,
+                address: address,
+                phone: phone,
+                ownerId: userId
+            )
+            let result: GymDTO = try await supabase
+                .from("gyms")
+                .insert(dto)
+                .select()
+                .single()
+                .execute()
+                .value
+            guard let gymId = result.id else { return false }
+            // Link profile to the new gym
+            try await supabase
+                .from("profiles")
+                .update(["gym_id": gymId.uuidString])
+                .eq("id", value: userId.uuidString)
+                .execute()
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Lỗi tạo phòng tập: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// PT/Client joins a gym by invite code
+    func joinGym(inviteCode: String) async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        errorMessage = nil
+        do {
+            let gym: GymDTO = try await supabase
+                .from("gyms")
+                .select()
+                .eq("invite_code", value: inviteCode.trimmingCharacters(in: .whitespaces).lowercased())
+                .single()
+                .execute()
+                .value
+            guard let gymId = gym.id else { return false }
+            // Link profile to gym
+            try await supabase
+                .from("profiles")
+                .update(["gym_id": gymId.uuidString])
+                .eq("id", value: userId.uuidString)
+                .execute()
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Mã mời không hợp lệ hoặc không tìm thấy phòng tập"
+            return false
+        }
+    }
+
+    /// PT/Client joins a gym by gym ID
+    func joinGymById(_ gymId: UUID) async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        errorMessage = nil
+        do {
+            try await supabase
+                .from("profiles")
+                .update(["gym_id": gymId.uuidString])
+                .eq("id", value: userId.uuidString)
+                .execute()
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Lỗi tham gia phòng tập: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -128,6 +280,7 @@ final class AuthManager {
         currentUser = nil
         userProfile = nil
         userRole = .owner
+        currentGym = nil
     }
 
     func resetPassword(email: String) async {

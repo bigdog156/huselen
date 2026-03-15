@@ -177,3 +177,94 @@ CREATE TRIGGER set_trainers_updated_at BEFORE UPDATE ON trainers FOR EACH ROW EX
 CREATE TRIGGER set_clients_updated_at BEFORE UPDATE ON clients FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER set_purchases_updated_at BEFORE UPDATE ON package_purchases FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER set_sessions_updated_at BEFORE UPDATE ON training_sessions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- Migration: Add makeup session support
+-- ============================================================
+ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS is_makeup BOOLEAN DEFAULT FALSE;
+ALTER TABLE training_sessions ADD COLUMN IF NOT EXISTS original_session_id UUID REFERENCES training_sessions(id);
+
+-- ============================================================
+-- Migration: RLS policies for Trainer (PT) role
+-- ============================================================
+
+-- Trainers can read their own trainer record
+CREATE POLICY "Trainers read own record" ON trainers FOR SELECT
+USING (profile_id = auth.uid());
+
+-- Trainers can read purchases assigned to them
+CREATE POLICY "Trainers read their purchases" ON package_purchases FOR SELECT
+USING (
+    trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+);
+
+-- Trainers can read packages linked to their purchases
+CREATE POLICY "Trainers read packages" ON pt_packages FOR SELECT
+USING (
+    id IN (
+        SELECT package_id FROM package_purchases
+        WHERE trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+    )
+);
+
+-- Trainers can INSERT sessions (for makeup sessions)
+CREATE POLICY "Trainers create sessions" ON training_sessions FOR INSERT
+WITH CHECK (
+    trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+);
+
+-- Trainers can UPDATE their own sessions
+CREATE POLICY "Trainers update their sessions" ON training_sessions FOR UPDATE
+USING (
+    trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+);
+
+-- Trainer attendance: enable RLS and add policies
+ALTER TABLE trainer_attendance ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Owners manage attendance" ON trainer_attendance FOR ALL
+USING (auth.uid() IN (SELECT owner_id FROM trainers WHERE id = trainer_id));
+
+CREATE POLICY "Trainers manage own attendance" ON trainer_attendance FOR ALL
+USING (
+    trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+);
+
+-- ============================================================
+-- Migration: Multi-gym support
+-- ============================================================
+
+-- Gyms table: each admin owns one gym
+CREATE TABLE IF NOT EXISTS gyms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    address TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    logo_url TEXT DEFAULT '',
+    owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    invite_code TEXT UNIQUE DEFAULT encode(gen_random_bytes(4), 'hex'),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE gyms ENABLE ROW LEVEL SECURITY;
+
+-- Anyone authenticated can view gyms (needed for search/join flow)
+CREATE POLICY "Authenticated users can view gyms" ON gyms FOR SELECT
+USING (auth.role() = 'authenticated');
+
+-- Only the owner can insert/update/delete their gym
+CREATE POLICY "Owners manage their gym" ON gyms FOR INSERT
+WITH CHECK (auth.uid() = owner_id);
+
+CREATE POLICY "Owners update their gym" ON gyms FOR UPDATE
+USING (auth.uid() = owner_id);
+
+CREATE POLICY "Owners delete their gym" ON gyms FOR DELETE
+USING (auth.uid() = owner_id);
+
+-- Add gym_id to profiles for user-gym association
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gym_id UUID REFERENCES gyms(id);
+
+-- Trigger for gyms updated_at
+CREATE TRIGGER set_gyms_updated_at BEFORE UPDATE ON gyms FOR EACH ROW EXECUTE FUNCTION update_updated_at();

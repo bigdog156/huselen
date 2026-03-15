@@ -6,7 +6,11 @@ struct TrainerListView: View {
     @State private var searchText = ""
 
     var filteredTrainers: [Trainer] {
-        let sorted = syncManager.trainers.sorted { $0.name < $1.name }
+        var list = syncManager.trainers
+        if let branchId = syncManager.selectedBranchId {
+            list = list.filter { $0.branchId == branchId }
+        }
+        let sorted = list.sorted { $0.name < $1.name }
         if searchText.isEmpty {
             return sorted
         }
@@ -25,7 +29,7 @@ struct TrainerListView: View {
             }
             .overlay {
                 if filteredTrainers.isEmpty {
-                    ContentUnavailableView("Chưa có PT nào", systemImage: "person.badge.plus", description: Text("Nhấn + để thêm PT mới"))
+                    ContentUnavailableView("Chưa có PT nào", systemImage: "person.badge.plus", description: Text(syncManager.selectedBranchId != nil ? "Không có PT ở cơ sở này" : "Nhấn + để thêm PT mới"))
                 }
             }
             .navigationTitle("Personal Trainers")

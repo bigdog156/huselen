@@ -6,7 +6,11 @@ struct ClientListView: View {
     @State private var searchText = ""
 
     var filteredClients: [Client] {
-        let sorted = syncManager.clients.sorted { $0.name < $1.name }
+        var list = syncManager.clients
+        if let branchId = syncManager.selectedBranchId {
+            list = list.filter { $0.branchId == branchId }
+        }
+        let sorted = list.sorted { $0.name < $1.name }
         if searchText.isEmpty {
             return sorted
         }
@@ -25,7 +29,7 @@ struct ClientListView: View {
             }
             .overlay {
                 if filteredClients.isEmpty {
-                    ContentUnavailableView("Chưa có khách hàng", systemImage: "person.crop.circle.badge.plus", description: Text("Nhấn + để thêm khách hàng mới"))
+                    ContentUnavailableView("Chưa có khách hàng", systemImage: "person.crop.circle.badge.plus", description: Text(syncManager.selectedBranchId != nil ? "Không có khách hàng ở cơ sở này" : "Nhấn + để thêm khách hàng mới"))
                 }
             }
             .navigationTitle("Khách hàng")

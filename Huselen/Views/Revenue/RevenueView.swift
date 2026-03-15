@@ -27,14 +27,17 @@ struct RevenueView: View {
         allPurchases.reduce(0) { $0 + $1.price }
     }
 
-    var revenueByTrainer: [(trainer: Trainer, revenue: Double, count: Int)] {
+    var revenueByTrainer: [(trainer: Trainer, revenue: Double, count: Int, mode: Trainer.RevenueMode)] {
         trainers.compactMap { trainer in
-            let trainerPurchases = purchasesInMonth.filter {
-                $0.trainer?.id == trainer.id
-            }
-            let revenue = trainerPurchases.reduce(0) { $0 + $1.price }
-            if revenue > 0 || trainerPurchases.count > 0 {
-                return (trainer: trainer, revenue: revenue, count: trainerPurchases.count)
+            let revenue = trainer.revenueInMonth(selectedMonth)
+            let calendar = Calendar.current
+            let sessionsInMonth = trainer.sessions.filter {
+                $0.isCompleted && calendar.isDate($0.scheduledDate, equalTo: selectedMonth, toGranularity: .month)
+            }.count
+            let purchasesCount = purchasesInMonth.filter { $0.trainer?.id == trainer.id }.count
+            let count = trainer.revenueMode == .perSession ? sessionsInMonth : purchasesCount
+            if revenue > 0 || count > 0 {
+                return (trainer: trainer, revenue: revenue, count: count, mode: trainer.revenueMode)
             }
             return nil
         }
@@ -101,7 +104,7 @@ struct RevenueView: View {
                                     Text(item.trainer.name)
                                         .font(.subheadline)
                                         .fontWeight(.medium)
-                                    Text("\(item.count) gói bán được")
+                                    Text(item.mode == .perSession ? "\(item.count) buổi đã dạy" : "\(item.count) gói bán được")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

@@ -5,6 +5,7 @@ struct SessionFormView: View {
     @Environment(DataSyncManager.self) private var syncManager
 
     var preselectedDate: Date = Date()
+    var editingSession: TrainingGymSession?
 
     @State private var selectedTrainer: Trainer?
     @State private var selectedClient: Client?
@@ -13,6 +14,8 @@ struct SessionFormView: View {
     @State private var selectedPurchase: PackagePurchase?
     @State private var conflictWarning: String?
     @State private var isSaving = false
+
+    private var isEditing: Bool { editingSession != nil }
 
     let durationOptions = [30, 45, 60, 75, 90, 120]
 
@@ -128,14 +131,14 @@ struct SessionFormView: View {
                     }
                 }
             }
-            .navigationTitle("Đặt lịch tập")
+            .navigationTitle(isEditing ? "Chỉnh sửa lịch tập" : "Đặt lịch tập")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Huỷ") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Đặt lịch") { save() }
+                    Button(isEditing ? "Lưu" : "Đặt lịch") { save() }
                         .disabled(selectedTrainer == nil || selectedClient == nil || conflictWarning != nil || isSaving)
                         .overlay {
                             if isSaving { ProgressView().tint(.accentColor) }
@@ -143,7 +146,17 @@ struct SessionFormView: View {
                 }
             }
             .onAppear {
-                scheduledDate = preselectedDate
+                if let session = editingSession {
+                    selectedTrainer = session.trainer
+                    selectedClient = session.client
+                    scheduledDate = session.scheduledDate
+                    duration = session.duration
+                    if let purchaseID = session.purchaseID, let client = session.client {
+                        selectedPurchase = client.purchases.first { $0.purchaseID == purchaseID }
+                    }
+                } else {
+                    scheduledDate = preselectedDate
+                }
             }
         }
     }
@@ -158,9 +171,11 @@ struct SessionFormView: View {
         let newEnd = Calendar.current.date(byAdding: .minute, value: duration, to: newStart) ?? newStart
 
         let hasConflict = trainer.sessions.contains { session in
-            !session.isCompleted &&
-            session.scheduledDate < newEnd &&
-            session.endDate > newStart
+            // Khi đang chỉnh sửa, bỏ qua chính session đó
+            if let editing = editingSession, session.id == editing.id { return false }
+            return !session.isCompleted &&
+                session.scheduledDate < newEnd &&
+                session.endDate > newStart
         }
 
         conflictWarning = hasConflict ? "PT \(trainer.name) đã có lịch vào thời gian này!" : nil
@@ -168,18 +183,52 @@ struct SessionFormView: View {
 
     private func save() {
         guard let trainer = selectedTrainer, let client = selectedClient else { return }
-        let session = TrainingGymSession(
-            trainer: trainer,
-            client: client,
-            scheduledDate: scheduledDate,
-            duration: duration,
-            purchaseID: selectedPurchase?.purchaseID
-        )
         isSaving = true
-        Task {
-            let success = await syncManager.createSession(session)
-            isSaving = false
-            if success { dismiss() }
+
+        if let session = editingSession {
+            // Cập nhật session hiện có
+            let oldTrainer = session.trainer
+            let oldClient = session.client
+
+            session.trainer = trainer
+            session.client = client
+            session.scheduledDate = scheduledDate
+            session.duration = duration
+            session.purchaseID = selectedPurchase?.purchaseID
+
+            // Cập nhật relationship arrays nếu trainer/client thay đổi
+            if oldTrainer?.id != trainer.id {
+                oldTrainer?.sessions.removeAll { $0.id == session.id }
+                if !trainer.sessions.contains(where: { $0.id == session.id }) {
+                    trainer.sessions.append(session)
+                }
+            }
+            if oldClient?.id != client.id {
+                oldClient?.sessions.removeAll { $0.id == session.id }
+                if !client.sessions.contains(where: { $0.id == session.id }) {
+                    client.sessions.append(session)
+                }
+            }
+
+            Task {
+                await syncManager.updateSession(session)
+                isSaving = false
+                dismiss()
+            }
+        } else {
+            // Tạo session mới
+            let session = TrainingGymSession(
+                trainer: trainer,
+                client: client,
+                scheduledDate: scheduledDate,
+                duration: duration,
+                purchaseID: selectedPurchase?.purchaseID
+            )
+            Task {
+                let success = await syncManager.createSession(session)
+                isSaving = false
+                if success { dismiss() }
+            }
         }
     }
 }

@@ -39,9 +39,6 @@ struct PTAttendanceView: View {
 
     @State private var notes = ""
     @State private var isProcessing = false
-    @State private var showCheckInCamera = false
-    @State private var showCheckOutCamera = false
-    @State private var capturedPhotoData: Data?
     @State private var wifiStatus: WiFiStatus = .checking
     @State private var showWiFiAlert = false
 
@@ -131,23 +128,6 @@ struct PTAttendanceView: View {
             .task {
                 await checkWiFi()
             }
-            .fullScreenCover(isPresented: $showCheckInCamera) {
-                CameraCaptureView { data in
-                    capturedPhotoData = data
-                }
-                .ignoresSafeArea()
-            }
-            .fullScreenCover(isPresented: $showCheckOutCamera) {
-                CameraCaptureView { data in
-                    guard let active = activeAttendance else { return }
-                    Task {
-                        isProcessing = true
-                        await syncManager.checkOut(active, photoData: data)
-                        isProcessing = false
-                    }
-                }
-                .ignoresSafeArea()
-            }
             .alert("Không đúng WiFi phòng tập", isPresented: $showWiFiAlert) {
                 Button("OK") {}
             } message: {
@@ -227,23 +207,16 @@ struct PTAttendanceView: View {
                 TimeElapsedView(since: active.checkInTime)
             }
 
-            if let urlStr = active.checkInPhotoURL, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(height: 120)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } placeholder: {
-                    ProgressView()
-                        .frame(height: 60)
-                }
-            }
-
             Button {
-                verifyWiFiAndProceed { showCheckOutCamera = true }
+                verifyWiFiAndProceed {
+                    Task {
+                        isProcessing = true
+                        await syncManager.checkOut(active)
+                        isProcessing = false
+                    }
+                }
             } label: {
-                Label("Chụp ảnh & Check-out", systemImage: "camera.fill")
+                Label("Check-out", systemImage: "arrow.left.circle.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(CuteButtonStyle(color: .red))
@@ -263,7 +236,7 @@ struct PTAttendanceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Chưa check-in")
                         .font(Theme.Fonts.headline())
-                    Text("Chụp ảnh để xác nhận check-in")
+                    Text("Nhấn để bắt đầu ca làm")
                         .font(Theme.Fonts.caption())
                         .foregroundStyle(.secondary)
                 }
@@ -273,52 +246,22 @@ struct PTAttendanceView: View {
             TextField("Ghi chú (tuỳ chọn)", text: $notes)
                 .textFieldStyle(.roundedBorder)
 
-            if let data = capturedPhotoData, let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            capturedPhotoData = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(.white, .black.opacity(0.5))
-                        }
-                        .padding(6)
+            Button {
+                guard let trainer = currentTrainer else { return }
+                verifyWiFiAndProceed {
+                    Task {
+                        isProcessing = true
+                        await syncManager.checkIn(trainer: trainer, notes: notes)
+                        notes = ""
+                        isProcessing = false
                     }
-            }
-
-            if capturedPhotoData == nil {
-                Button {
-                    verifyWiFiAndProceed { showCheckInCamera = true }
-                } label: {
-                    Label("Chụp ảnh check-in", systemImage: "camera.fill")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(CuteButtonStyle(color: .blue))
-                .disabled(currentTrainer == nil)
-            } else {
-                Button {
-                    guard let trainer = currentTrainer else { return }
-                    verifyWiFiAndProceed {
-                        Task {
-                            isProcessing = true
-                            await syncManager.checkIn(trainer: trainer, notes: notes, photoData: capturedPhotoData)
-                            notes = ""
-                            capturedPhotoData = nil
-                            isProcessing = false
-                        }
-                    }
-                } label: {
-                    Label("Xác nhận Check-in", systemImage: "arrow.right.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(CuteButtonStyle(color: .green))
-                .disabled(isProcessing)
+            } label: {
+                Label("Check-in", systemImage: "arrow.right.circle.fill")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(CuteButtonStyle(color: .green))
+            .disabled(isProcessing || currentTrainer == nil)
         }
         .padding(.vertical, 8)
     }

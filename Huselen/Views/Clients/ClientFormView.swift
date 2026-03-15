@@ -14,6 +14,7 @@ struct ClientFormView: View {
     @State private var muscleMass: Double = 0
     @State private var goal = ""
     @State private var notes = ""
+    @State private var selectedBranchId: UUID?
     @State private var isSaving = false
 
     var isEditing: Bool { client != nil }
@@ -62,6 +63,17 @@ struct ClientFormView: View {
                         .frame(minHeight: 60)
                 }
 
+                if !syncManager.branches.isEmpty {
+                    Section("Cơ sở") {
+                        Picker("Cơ sở phòng tập", selection: $selectedBranchId) {
+                            Text("Chưa chọn").tag(nil as UUID?)
+                            ForEach(syncManager.branches.filter(\.isActive)) { branch in
+                                Text(branch.name).tag(branch.id as UUID?)
+                            }
+                        }
+                    }
+                }
+
                 Section("Ghi chú") {
                     TextEditor(text: $notes)
                         .frame(minHeight: 60)
@@ -91,6 +103,7 @@ struct ClientFormView: View {
                     muscleMass = client.muscleMass
                     goal = client.goal
                     notes = client.notes
+                    selectedBranchId = client.branchId
                 }
             }
         }
@@ -107,6 +120,8 @@ struct ClientFormView: View {
             client.muscleMass = muscleMass
             client.goal = goal
             client.notes = notes
+            client.branchId = selectedBranchId
+            client.branch = selectedBranchId.flatMap { bid in syncManager.branches.first { $0.id == bid } }
             Task {
                 await syncManager.updateClient(client)
                 isSaving = false
@@ -123,6 +138,8 @@ struct ClientFormView: View {
                 goal: goal,
                 notes: notes
             )
+            newClient.branchId = selectedBranchId
+            newClient.branch = selectedBranchId.flatMap { bid in syncManager.branches.first { $0.id == bid } }
             Task {
                 let success = await syncManager.createClient(newClient)
                 isSaving = false
