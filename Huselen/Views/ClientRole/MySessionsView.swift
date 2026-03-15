@@ -36,7 +36,7 @@ struct MySessionsView: View {
         for _ in 0..<60 {
             let hit = allSessions.contains {
                 cal.isDate($0.scheduledDate, inSameDayAs: checkDate) &&
-                ($0.isCompleted || $0.isCheckedIn)
+                ($0.isCompleted || $0.isCheckedIn || $0.clientCheckInPhotoURL != nil)
             }
             guard hit else { break }
             streak += 1
@@ -181,7 +181,9 @@ struct MySessionsView: View {
         let isSelected = cal.isDate(date, inSameDayAs: selectedDate)
         let isCurrentM = cal.isDate(date, equalTo: currentMonth, toGranularity: .month)
         let daySess    = sessions(for: date)
+        let hasSession = !daySess.isEmpty
         let photoURL   = daySess.compactMap { $0.clientCheckInPhotoURL }.first.flatMap { URL(string: $0) }
+        let hasPhoto   = photoURL != nil
 
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -189,30 +191,40 @@ struct MySessionsView: View {
             }
         } label: {
             ZStack {
-                // Background
-                if isToday || isSelected {
-                    Circle().fill(Color.fitGreen)
-                }
-
-                // Photo thumbnail
-                if let url = photoURL, !isToday, !isSelected {
+                // Photo background
+                if let url = photoURL {
                     AsyncImage(url: url) { phase in
                         if case .success(let img) = phase {
-                            img.resizable().scaledToFill().clipShape(Circle())
+                            img.resizable().scaledToFill()
+                                .clipShape(Circle())
+                        } else {
+                            Circle().fill(Color.fitIndigo.opacity(0.15))
                         }
                     }
-                    .overlay(Color.black.opacity(0.3).clipShape(Circle()))
+                    .overlay(Color.black.opacity(isSelected ? 0.15 : 0.3).clipShape(Circle()))
+                } else if isToday || isSelected {
+                    Circle().fill(Color.fitGreen)
+                } else if hasSession {
+                    Circle().fill(Color.fitGreen.opacity(0.1))
+                }
+
+                // Selection ring
+                if isSelected {
+                    Circle()
+                        .strokeBorder(hasPhoto ? .white : Color.fitGreen, lineWidth: 2.5)
                 }
 
                 // Day number
                 Text(date.formatted(.dateTime.day()))
-                    .font(.system(size: 13, weight: isToday || isSelected ? .bold : .medium))
+                    .font(.system(size: 13, weight: isToday || isSelected || hasPhoto ? .bold : .medium))
                     .foregroundStyle(
+                        hasPhoto ? .white :
                         isToday || isSelected ? .white :
-                        photoURL != nil ? .white :
+                        hasSession ? Color.fitGreen :
                         !isCurrentM ? Color.fitTextTertiary.opacity(0.4) :
                         Color.fitTextPrimary
                     )
+                    .shadow(color: hasPhoto ? .black.opacity(0.5) : .clear, radius: 1, y: 1)
             }
             .frame(width: 36, height: 36)
         }
@@ -297,25 +309,62 @@ struct MySessionsView: View {
     private func sessionCard(_ session: TrainingGymSession) -> some View {
         let start = session.scheduledDate.formatted(date: .omitted, time: .shortened)
         let end   = session.endDate.formatted(date: .omitted, time: .shortened)
+        let accentColor = session.isCompleted ? Color.fitGreen : (session.isCheckedIn ? Color.orange : (session.clientCheckInPhotoURL != nil ? Color.fitIndigo : Color.fitGreen))
 
         return Button { selectedSession = session } label: {
             HStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(session.isCompleted ? Color.fitGreen : (session.isCheckedIn ? Color.orange : Color.fitGreen))
+                    .fill(accentColor)
                     .frame(width: 4)
                     .padding(.vertical, 4)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("\(start) – \(end)")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.fitTextPrimary)
-                        Spacer()
-                        sessionBadge(session)
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("\(start) – \(end)")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.fitTextPrimary)
+                            Spacer()
+                            sessionBadge(session)
+                        }
+                        HStack(spacing: 6) {
+                            Text("PT: \(session.trainer?.name ?? "N/A")")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.fitTextSecondary)
+
+                            if session.clientCheckInTime != nil {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 9))
+                                    Text(session.clientCheckInTime!, format: .dateTime.hour().minute())
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .foregroundStyle(Color.fitIndigo)
+                            }
+                        }
                     }
-                    Text("PT: \(session.trainer?.name ?? "N/A")")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.fitTextSecondary)
+
+                    // Check-in photo thumbnail
+                    if let urlStr = session.clientCheckInPhotoURL, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            if case .success(let img) = phase {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.fitCard
+                                    .overlay(
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(Color.fitTextTertiary.opacity(0.5))
+                                    )
+                            }
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(accentColor.opacity(0.3), lineWidth: 1)
+                        )
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -344,6 +393,13 @@ struct MySessionsView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(Capsule().fill(Color.orange))
+        } else if session.clientCheckInPhotoURL != nil {
+            Text("Đã gửi ảnh")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitIndigo))
         } else {
             Text("Sắp tới")
                 .font(.system(size: 11, weight: .semibold))
@@ -380,6 +436,7 @@ private struct ClientSessionDetailSheet: View {
     private var statusColor: Color {
         if session.isCompleted { return Color(red: 0.133, green: 0.773, blue: 0.369) }
         if session.isCheckedIn { return .orange }
+        if session.clientCheckInPhotoURL != nil { return Color(red: 0.388, green: 0.400, blue: 0.945) }
         return Color(red: 0.388, green: 0.400, blue: 0.945)
     }
 
@@ -455,12 +512,34 @@ private struct ClientSessionDetailSheet: View {
                             }
                         }
 
+                        // Client self check-in
+                        if let t = session.clientCheckInTime {
+                            HStack(spacing: 8) {
+                                Image(systemName: "camera.fill")
+                                    .foregroundStyle(Color(red: 0.388, green: 0.400, blue: 0.945))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Bạn đã check-in")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("lúc \(t.formatted(date: .omitted, time: .shortened))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                }
+                                Spacer()
+                            }
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color(red: 0.388, green: 0.400, blue: 0.945).opacity(0.08))
+                            )
+                        }
+
+                        // PT check-in
                         if session.isCheckedIn, let t = session.checkInTime {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.shield.fill")
                                     .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Đã check-in")
+                                    Text("PT đã xác nhận")
                                         .font(.system(size: 14, weight: .semibold))
                                     Text("lúc \(t.formatted(date: .omitted, time: .shortened))")
                                         .font(.system(size: 12))
@@ -516,6 +595,8 @@ private struct ClientSessionDetailSheet: View {
                 Label("Hoàn thành", systemImage: "checkmark.circle.fill")
             } else if session.isCheckedIn {
                 Label("Đang tập", systemImage: "figure.run")
+            } else if session.clientCheckInPhotoURL != nil {
+                Label("Đã gửi ảnh", systemImage: "camera.fill")
             } else {
                 Label("Chờ check-in", systemImage: "clock.fill")
             }

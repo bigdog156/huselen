@@ -283,6 +283,40 @@ final class AuthManager {
         currentGym = nil
     }
 
+    func uploadAvatar(imageData: Data) async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        errorMessage = nil
+        do {
+            let filePath = "\(userId.uuidString)/avatar.jpg"
+            // Upload to Supabase storage
+            try await supabase.storage
+                .from("avatars")
+                .upload(
+                    filePath,
+                    data: imageData,
+                    options: .init(contentType: "image/jpeg", upsert: true)
+                )
+            // Get public URL
+            let publicURL = try supabase.storage
+                .from("avatars")
+                .getPublicURL(path: filePath)
+            // Add cache-busting timestamp
+            let avatarUrlString = publicURL.absoluteString + "?t=\(Int(Date().timeIntervalSince1970))"
+            // Update profile
+            try await supabase
+                .from("profiles")
+                .update(["avatar_url": avatarUrlString])
+                .eq("id", value: userId.uuidString)
+                .execute()
+            await fetchProfile()
+            return true
+        } catch {
+            print("Error uploading avatar: \(error)")
+            errorMessage = "Lỗi tải ảnh: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     func resetPassword(email: String) async {
         isLoading = true
         errorMessage = nil

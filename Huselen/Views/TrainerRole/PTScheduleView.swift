@@ -695,6 +695,14 @@ private struct PTGroupClientRow: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    // Client photo indicator nhỏ
+                    if session.clientCheckInPhotoURL != nil {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.Colors.mintGreen)
+                            .padding(4)
+                            .background(Circle().fill(Theme.Colors.mintGreen.opacity(0.12)))
+                    }
                 }
             }
 
@@ -971,7 +979,7 @@ struct PTSessionCard: View {
 
             // Action buttons
             if !session.isCompleted && !session.isAbsent {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     if !session.isCheckedIn {
                         Button {
                             session.isCheckedIn = true
@@ -981,8 +989,8 @@ struct PTSessionCard: View {
                             Label("Check-in", systemImage: "checkmark.shield.fill")
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
                                 .background(Capsule().fill(Theme.Colors.skyBlue.gradient))
                         }
                         .buttonStyle(.plain)
@@ -995,9 +1003,9 @@ struct PTSessionCard: View {
                             Label("Hoàn thành", systemImage: "checkmark.circle.fill")
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Capsule().fill(Theme.Colors.mintGreen.gradient))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.Colors.mintGreen.gradient))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1024,6 +1032,44 @@ struct PTSessionCard: View {
                         .foregroundStyle(Theme.Colors.softOrange)
                     }
                 }
+                .padding(.leading, 62)
+            }
+
+            // Client self-check-in photo (thông tin thêm, không ảnh hưởng PT)
+            if let photoURL = session.clientCheckInPhotoURL, let url = URL(string: photoURL) {
+                HStack(spacing: 8) {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFill()
+                        } else {
+                            Color.gray.opacity(0.2)
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Học viên đã check-in")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.Colors.mintGreen)
+                        if let time = session.clientCheckInTime {
+                            Text(time, format: .dateTime.hour().minute())
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.Colors.mintGreen.opacity(0.6))
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.Colors.mintGreen.opacity(0.08))
+                )
                 .padding(.leading, 62)
             }
         }

@@ -3,7 +3,8 @@ import Foundation
 // MARK: - Meal Entry
 
 struct MealEntry: Identifiable, Codable, Hashable {
-    var id: String = UUID().uuidString
+    var id: UUID = UUID()
+    var clientId: UUID?
     var name: String
     var description: String
     var calories: Int
@@ -42,24 +43,7 @@ struct FoodItem: Identifiable {
     let emoji: String
 }
 
-// MARK: - Sample Data
-
-extension MealEntry {
-    static var sampleData: [MealEntry] {
-        let today = Date()
-        return [
-            MealEntry(name: "Bữa sáng", description: "Yến mạch, trứng luộc, chuối",
-                      calories: 450, protein: 28, carbs: 52, fat: 14,
-                      mealType: .breakfast, date: today),
-            MealEntry(name: "Bữa trưa", description: "Cơm gạo lứt, ức gà, rau xào",
-                      calories: 650, protein: 45, carbs: 85, fat: 18,
-                      mealType: .lunch, date: today),
-            MealEntry(name: "Bữa tối", description: "Cá hấp gừng, canh rau, đậu hũ",
-                      calories: 750, protein: 55, carbs: 72, fat: 22,
-                      mealType: .dinner, date: today),
-        ]
-    }
-}
+// MARK: - Popular Foods
 
 extension FoodItem {
     static var popularFoods: [FoodItem] = [
@@ -69,6 +53,10 @@ extension FoodItem {
         FoodItem(name: "Ức gà", caloriesPer100g: 165, proteinPer100g: 31, carbsPer100g: 0, fatPer100g: 3.6, emoji: "🍗"),
         FoodItem(name: "Cơm gạo lứt", caloriesPer100g: 216, proteinPer100g: 5, carbsPer100g: 45, fatPer100g: 1.8, emoji: "🍚"),
         FoodItem(name: "Yến mạch", caloriesPer100g: 389, proteinPer100g: 17, carbsPer100g: 66, fatPer100g: 7, emoji: "🌾"),
+        FoodItem(name: "Sữa chua Hy Lạp", caloriesPer100g: 59, proteinPer100g: 10, carbsPer100g: 3.6, fatPer100g: 0.7, emoji: "🥛"),
+        FoodItem(name: "Cá hồi", caloriesPer100g: 208, proteinPer100g: 20, carbsPer100g: 0, fatPer100g: 13, emoji: "🐟"),
+        FoodItem(name: "Khoai lang", caloriesPer100g: 86, proteinPer100g: 1.6, carbsPer100g: 20, fatPer100g: 0.1, emoji: "🍠"),
+        FoodItem(name: "Đậu hũ", caloriesPer100g: 76, proteinPer100g: 8, carbsPer100g: 1.9, fatPer100g: 4.8, emoji: "🧈"),
     ]
 
     static var recentFoods: [FoodItem] = [

@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct AddFoodView: View {
-    @Binding var mealEntries: [MealEntry]
     let date: Date
     @Environment(\.dismiss) private var dismiss
+    @Environment(DataSyncManager.self) private var syncManager
 
     @State private var selectedMealType: MealEntry.MealType = .breakfast
     @State private var searchText = ""
@@ -62,11 +62,11 @@ struct AddFoodView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Xong") { dismiss() }
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
+                        .foregroundStyle(Color.fitGreen)
                 }
             }
             .sheet(item: $selectedFood) { food in
-                FoodDetailSheet(food: food, mealType: selectedMealType, date: date, mealEntries: $mealEntries)
+                FoodDetailSheet(food: food, mealType: selectedMealType, date: date)
             }
         }
     }
@@ -81,14 +81,14 @@ struct AddFoodView: View {
                 } label: {
                     Text(type.rawValue)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selectedMealType == type ? .white : Color(red: 0.420, green: 0.447, blue: 0.502))
+                        .foregroundStyle(selectedMealType == type ? .white : Color.fitTextSecondary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(
                             Capsule()
                                 .fill(selectedMealType == type
-                                      ? Color(red: 0.133, green: 0.773, blue: 0.369)
-                                      : Color(red: 0.965, green: 0.969, blue: 0.973))
+                                      ? Color.fitGreen
+                                      : Color.fitCard)
                         )
                 }
                 .buttonStyle(.plain)
@@ -103,7 +103,7 @@ struct AddFoodView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16))
-                .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                .foregroundStyle(Color.fitTextTertiary)
 
             TextField("Tìm thực phẩm...", text: $searchText)
                 .font(.system(size: 14))
@@ -111,22 +111,22 @@ struct AddFoodView: View {
             if !searchText.isEmpty {
                 Button { searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                        .foregroundStyle(Color.fitTextTertiary)
                 }
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(red: 0.941, green: 0.992, blue: 0.957))
+                        .fill(Color.fitGreenSoft)
                         .frame(width: 30, height: 30)
                     Image(systemName: "barcode.viewfinder")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
+                        .foregroundStyle(Color.fitGreen)
                 }
             }
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
-        .background(Color(red: 0.965, green: 0.969, blue: 0.973))
+        .background(Color.fitCard)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -137,13 +137,13 @@ struct AddFoodView: View {
             HStack {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                    .foregroundStyle(Color.fitTextTertiary)
                     .tracking(1)
                 Spacer()
                 if showSeeAll {
                     Text("Xem tất cả")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
+                        .foregroundStyle(Color.fitGreen)
                 }
             }
 
@@ -175,10 +175,10 @@ struct FoodRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(food.name)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                        .foregroundStyle(Color.fitTextPrimary)
                     Text("\(food.caloriesPer100g) kcal · 100g")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                        .foregroundStyle(Color.fitTextSecondary)
                 }
 
                 Spacer()
@@ -186,14 +186,14 @@ struct FoodRowView: View {
                 HStack(spacing: 6) {
                     Text("P \(Int(food.proteinPer100g))g")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.388, green: 0.400, blue: 0.945))
+                        .foregroundStyle(Color.fitIndigo)
                     Text("C \(Int(food.carbsPer100g))g")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.851, green: 0.467, blue: 0.024))
+                        .foregroundStyle(Color.fitOrange)
 
                     ZStack {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(red: 0.133, green: 0.773, blue: 0.369))
+                            .fill(Color.fitGreen)
                             .frame(width: 28, height: 28)
                         Image(systemName: "plus")
                             .font(.system(size: 12, weight: .bold))
@@ -203,7 +203,7 @@ struct FoodRowView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(Color(red: 0.965, green: 0.969, blue: 0.973))
+            .background(Color.fitCard)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -211,9 +211,9 @@ struct FoodRowView: View {
 
     private var dotColor: Color {
         switch food.name {
-        case _ where food.proteinPer100g > 20: return Color(red: 0.388, green: 0.400, blue: 0.945)
-        case _ where food.fatPer100g > 10: return Color(red: 1.0, green: 0.420, blue: 0.420)
-        default: return Color(red: 0.133, green: 0.773, blue: 0.369)
+        case _ where food.proteinPer100g > 20: return Color.fitIndigo
+        case _ where food.fatPer100g > 10: return Color.fitCoral
+        default: return Color.fitGreen
         }
     }
 }
@@ -224,10 +224,11 @@ struct FoodDetailSheet: View {
     let food: FoodItem
     let mealType: MealEntry.MealType
     let date: Date
-    @Binding var mealEntries: [MealEntry]
     @Environment(\.dismiss) private var dismiss
+    @Environment(DataSyncManager.self) private var syncManager
 
     @State private var quantity: Double = 100
+    @State private var isSaving = false
 
     private var scaledCalories: Int { Int(Double(food.caloriesPer100g) * quantity / 100) }
     private var scaledProtein: Double { food.proteinPer100g * quantity / 100 }
@@ -243,16 +244,16 @@ struct FoodDetailSheet: View {
                         .font(.system(size: 56))
                     Text(food.name)
                         .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                        .foregroundStyle(Color.fitTextPrimary)
                 }
                 .padding(.top, 8)
 
                 // Macro summary
                 HStack(spacing: 12) {
-                    macroStat(label: "Calories", value: "\(scaledCalories)", unit: "kcal", color: Color(red: 0.133, green: 0.773, blue: 0.369))
-                    macroStat(label: "Protein", value: String(format: "%.1f", scaledProtein), unit: "g", color: Color(red: 0.388, green: 0.400, blue: 0.945))
-                    macroStat(label: "Carbs", value: String(format: "%.1f", scaledCarbs), unit: "g", color: Color(red: 0.851, green: 0.467, blue: 0.024))
-                    macroStat(label: "Fat", value: String(format: "%.1f", scaledFat), unit: "g", color: Color(red: 1.0, green: 0.420, blue: 0.420))
+                    macroStat(label: "Calories", value: "\(scaledCalories)", unit: "kcal", color: Color.fitGreen)
+                    macroStat(label: "Protein", value: String(format: "%.1f", scaledProtein), unit: "g", color: Color.fitIndigo)
+                    macroStat(label: "Carbs", value: String(format: "%.1f", scaledCarbs), unit: "g", color: Color.fitOrange)
+                    macroStat(label: "Fat", value: String(format: "%.1f", scaledFat), unit: "g", color: Color.fitCoral)
                 }
                 .padding(.horizontal, 20)
 
@@ -260,19 +261,19 @@ struct FoodDetailSheet: View {
                 VStack(spacing: 12) {
                     Text("Khối lượng")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                        .foregroundStyle(Color.fitTextTertiary)
                     HStack(spacing: 20) {
                         Button {
                             quantity = max(10, quantity - 10)
                         } label: {
                             Image(systemName: "minus.circle.fill")
                                 .font(.system(size: 32))
-                                .foregroundStyle(Color(red: 0.965, green: 0.969, blue: 0.973))
+                                .foregroundStyle(Color.fitCard)
                         }
 
                         Text("\(Int(quantity))g")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                            .foregroundStyle(Color.fitTextPrimary)
                             .frame(minWidth: 80)
 
                         Button {
@@ -280,13 +281,13 @@ struct FoodDetailSheet: View {
                         } label: {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 32))
-                                .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
+                                .foregroundStyle(Color.fitGreen)
                         }
                     }
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
-                .background(Color(red: 0.965, green: 0.969, blue: 0.973))
+                .background(Color.fitCard)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .padding(.horizontal, 20)
 
@@ -294,6 +295,7 @@ struct FoodDetailSheet: View {
 
                 // Add button
                 Button {
+                    isSaving = true
                     let entry = MealEntry(
                         name: food.name,
                         description: "\(Int(quantity))g",
@@ -304,8 +306,11 @@ struct FoodDetailSheet: View {
                         mealType: mealType,
                         date: date
                     )
-                    mealEntries.append(entry)
-                    dismiss()
+                    Task {
+                        await syncManager.createMealEntry(entry)
+                        isSaving = false
+                        dismiss()
+                    }
                 } label: {
                     Text("Thêm vào \(mealType.rawValue)")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -314,13 +319,14 @@ struct FoodDetailSheet: View {
                         .padding(.vertical, 16)
                         .background(
                             LinearGradient(
-                                colors: [Color(red: 0.133, green: 0.773, blue: 0.369), Color(red: 0.086, green: 0.639, blue: 0.290)],
+                                colors: [Color.fitGreen, Color.fitGreenDark],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .disabled(isSaving)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
             }
@@ -341,10 +347,10 @@ struct FoodDetailSheet: View {
                 .foregroundStyle(color)
             Text(unit)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                .foregroundStyle(Color.fitTextTertiary)
             Text(label)
                 .font(.system(size: 10))
-                .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                .foregroundStyle(Color.fitTextTertiary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)

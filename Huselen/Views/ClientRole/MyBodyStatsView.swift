@@ -167,6 +167,14 @@ struct MyBodyStatsView: View {
 
             VStack(spacing: 0) {
                 statRow(
+                    icon: "ruler.fill",
+                    iconColor: Color.fitIndigo,
+                    iconBg: Color(red: 0.937, green: 0.937, blue: 0.988),
+                    title: "Chiều cao",
+                    value: myProfile.flatMap { $0.height > 0 ? String(format: "%.1f cm", $0.height) : nil }
+                )
+                Divider().padding(.leading, 54)
+                statRow(
                     icon: "scalemass.fill",
                     iconColor: Color.fitGreen,
                     iconBg: Color(red: 0.941, green: 0.992, blue: 0.957),
@@ -193,7 +201,68 @@ struct MyBodyStatsView: View {
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.fitCard)
             )
+
+            Text("SỐ ĐO CƠ THỂ")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.fitTextTertiary)
+                .tracking(1)
+                .padding(.top, 8)
+
+            VStack(spacing: 0) {
+                measurementRow(title: "Cổ", value: myProfile?.neck, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Vai", value: myProfile?.shoulder, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Cánh tay", value: myProfile?.arm, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Vòng 1", value: myProfile?.chest, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Eo", value: myProfile?.waist, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Hông", value: myProfile?.hip, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Đùi", value: myProfile?.thigh, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Bắp chân", value: myProfile?.calf, unit: "cm")
+                Divider().padding(.leading, 54)
+                measurementRow(title: "Vòng 3", value: myProfile?.lowerHip, unit: "cm")
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.fitCard)
+            )
         }
+    }
+
+    private func measurementRow(title: String, value: Double?, unit: String) -> some View {
+        let display = value.flatMap { $0 > 0 ? String(format: "%.1f %@", $0, unit) : nil }
+        return HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(red: 0.941, green: 0.957, blue: 0.992))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "lines.measurement.horizontal")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.fitIndigo)
+            }
+
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.fitTextPrimary)
+
+            Spacer()
+
+            Text(display ?? "Chưa cập nhật")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(display != nil ? Color.fitTextPrimary : Color.fitTextTertiary)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.fitTextTertiary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .onTapGesture { showUpdateSheet = true }
     }
 
     private func statRow(icon: String, iconColor: Color, iconBg: Color,
@@ -327,35 +396,41 @@ struct UpdateBodyStatsSheet: View {
 
     let client: Client?
 
-    @State private var weight    = ""
-    @State private var bodyFat   = ""
+    @State private var height     = ""
+    @State private var weight     = ""
+    @State private var bodyFat    = ""
     @State private var muscleMass = ""
+    @State private var neck       = ""
+    @State private var shoulder   = ""
+    @State private var arm        = ""
+    @State private var chest      = ""
+    @State private var waist      = ""
+    @State private var hip        = ""
+    @State private var thigh      = ""
+    @State private var calf       = ""
+    @State private var lowerHip   = ""
+    @State private var isSaving   = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Chỉ số cơ thể") {
-                    HStack {
-                        Label("Cân nặng", systemImage: "scalemass.fill")
-                        Spacer()
-                        TextField("kg", text: $weight)
-                            .decimalKeyboard()
-                            .multilineTextAlignment(.trailing)
-                    }
-                    HStack {
-                        Label("Tỷ lệ mỡ", systemImage: "flame.fill")
-                        Spacer()
-                        TextField("%", text: $bodyFat)
-                            .decimalKeyboard()
-                            .multilineTextAlignment(.trailing)
-                    }
-                    HStack {
-                        Label("Khối lượng cơ", systemImage: "figure.strengthtraining.traditional")
-                        Spacer()
-                        TextField("kg", text: $muscleMass)
-                            .decimalKeyboard()
-                            .multilineTextAlignment(.trailing)
-                    }
+                    statsField(label: "Chiều cao", icon: "ruler.fill", unit: "cm", text: $height)
+                    statsField(label: "Cân nặng", icon: "scalemass.fill", unit: "kg", text: $weight)
+                    statsField(label: "Tỷ lệ mỡ", icon: "flame.fill", unit: "%", text: $bodyFat)
+                    statsField(label: "Khối lượng cơ", icon: "figure.strengthtraining.traditional", unit: "kg", text: $muscleMass)
+                }
+
+                Section("Số đo cơ thể (cm)") {
+                    statsField(label: "Cổ", icon: "lines.measurement.horizontal", unit: "cm", text: $neck)
+                    statsField(label: "Vai", icon: "lines.measurement.horizontal", unit: "cm", text: $shoulder)
+                    statsField(label: "Cánh tay", icon: "lines.measurement.horizontal", unit: "cm", text: $arm)
+                    statsField(label: "Vòng 1", icon: "lines.measurement.horizontal", unit: "cm", text: $chest)
+                    statsField(label: "Eo", icon: "lines.measurement.horizontal", unit: "cm", text: $waist)
+                    statsField(label: "Hông", icon: "lines.measurement.horizontal", unit: "cm", text: $hip)
+                    statsField(label: "Đùi", icon: "lines.measurement.horizontal", unit: "cm", text: $thigh)
+                    statsField(label: "Bắp chân", icon: "lines.measurement.horizontal", unit: "cm", text: $calf)
+                    statsField(label: "Vòng 3", icon: "lines.measurement.horizontal", unit: "cm", text: $lowerHip)
                 }
             }
             .navigationTitle("Cập nhật chỉ số")
@@ -365,25 +440,63 @@ struct UpdateBodyStatsSheet: View {
                     Button("Huỷ") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Lưu") {
-                        if let c = client {
-                            if let w = Double(weight)     { c.weight     = w }
-                            if let f = Double(bodyFat)    { c.bodyFat    = f }
-                            if let m = Double(muscleMass) { c.muscleMass = m }
-                        }
-                        dismiss()
-                    }
-                    .font(.system(size: 15, weight: .semibold))
+                    Button("Lưu") { save() }
+                        .font(.system(size: 15, weight: .semibold))
+                        .disabled(isSaving)
                 }
             }
-            .onAppear {
-                if let c = client {
-                    weight     = c.weight > 0     ? String(format: "%.1f", c.weight)     : ""
-                    bodyFat    = c.bodyFat > 0    ? String(format: "%.1f", c.bodyFat)    : ""
-                    muscleMass = c.muscleMass > 0 ? String(format: "%.1f", c.muscleMass) : ""
-                }
-            }
+            .onAppear { loadValues() }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
+    }
+
+    private func statsField(label: String, icon: String, unit: String, text: Binding<String>) -> some View {
+        HStack {
+            Label(label, systemImage: icon)
+            Spacer()
+            TextField(unit, text: text)
+                .decimalKeyboard()
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func loadValues() {
+        guard let c = client else { return }
+        height     = c.height > 0     ? String(format: "%.1f", c.height)     : ""
+        weight     = c.weight > 0     ? String(format: "%.1f", c.weight)     : ""
+        bodyFat    = c.bodyFat > 0    ? String(format: "%.1f", c.bodyFat)    : ""
+        muscleMass = c.muscleMass > 0 ? String(format: "%.1f", c.muscleMass) : ""
+        neck       = c.neck > 0       ? String(format: "%.1f", c.neck)       : ""
+        shoulder   = c.shoulder > 0   ? String(format: "%.1f", c.shoulder)   : ""
+        arm        = c.arm > 0        ? String(format: "%.1f", c.arm)        : ""
+        chest      = c.chest > 0      ? String(format: "%.1f", c.chest)      : ""
+        waist      = c.waist > 0      ? String(format: "%.1f", c.waist)      : ""
+        hip        = c.hip > 0        ? String(format: "%.1f", c.hip)        : ""
+        thigh      = c.thigh > 0      ? String(format: "%.1f", c.thigh)      : ""
+        calf       = c.calf > 0       ? String(format: "%.1f", c.calf)       : ""
+        lowerHip   = c.lowerHip > 0   ? String(format: "%.1f", c.lowerHip)   : ""
+    }
+
+    private func save() {
+        guard let c = client else { return }
+        isSaving = true
+        if let v = Double(height)     { c.height     = v }
+        if let v = Double(weight)     { c.weight     = v }
+        if let v = Double(bodyFat)    { c.bodyFat    = v }
+        if let v = Double(muscleMass) { c.muscleMass = v }
+        if let v = Double(neck)       { c.neck       = v }
+        if let v = Double(shoulder)   { c.shoulder   = v }
+        if let v = Double(arm)        { c.arm        = v }
+        if let v = Double(chest)      { c.chest      = v }
+        if let v = Double(waist)      { c.waist      = v }
+        if let v = Double(hip)        { c.hip        = v }
+        if let v = Double(thigh)      { c.thigh      = v }
+        if let v = Double(calf)       { c.calf       = v }
+        if let v = Double(lowerHip)   { c.lowerHip   = v }
+        Task {
+            await syncManager.updateClient(c)
+            isSaving = false
+            dismiss()
+        }
     }
 }

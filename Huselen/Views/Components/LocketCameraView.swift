@@ -10,6 +10,7 @@ final class LocketCameraManager: NSObject {
     var capturedImage: UIImage?
     var isFrontCamera = true
     var flashEnabled = false
+    var permissionDenied = false
 
     let session = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
@@ -18,6 +19,25 @@ final class LocketCameraManager: NSObject {
     func setupSession() {
         guard !isSessionRunning else { return }
 
+        // Check camera permission first
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            configureAndStart()
+        case .notDetermined:
+            Task {
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                if granted {
+                    configureAndStart()
+                } else {
+                    permissionDenied = true
+                }
+            }
+        default:
+            permissionDenied = true
+        }
+    }
+
+    private func configureAndStart() {
         session.beginConfiguration()
         session.sessionPreset = .photo
 
@@ -106,27 +126,29 @@ extension LocketCameraManager: @preconcurrency AVCapturePhotoCaptureDelegate {
 
 // MARK: - Camera Preview UIView
 
+class CameraPreviewUIView: UIView {
+    var previewLayer: AVCaptureVideoPreviewLayer?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        previewLayer?.frame = bounds
+    }
+}
+
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> CameraPreviewUIView {
+        let view = CameraPreviewUIView()
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.frame = view.bounds
         view.layer.addSublayer(previewLayer)
-        context.coordinator.previewLayer = previewLayer
+        view.previewLayer = previewLayer
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.previewLayer?.frame = uiView.bounds
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    class Coordinator {
-        var previewLayer: AVCaptureVideoPreviewLayer?
+    func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {
+        uiView.previewLayer?.session = session
     }
 }
 
@@ -157,7 +179,36 @@ struct LocketCameraView: View {
 
                 // Camera preview or captured photo
                 ZStack {
-                    if let image = camera.capturedImage {
+                    if camera.permissionDenied {
+                        VStack(spacing: 16) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.white.opacity(0.4))
+                            Text("Cần quyền truy cập Camera")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                            Text("Vào Cài đặt → Huselen → Bật Camera")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.5))
+                            Button {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                Text("Mở Cài đặt")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.black)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 10)
+                                    .background(Capsule().fill(.white))
+                            }
+                        }
+                        .frame(width: cameraSize, height: cameraSize)
+                        .background(
+                            RoundedRectangle(cornerRadius: 36, style: .continuous)
+                                .fill(Color.white.opacity(0.1))
+                        )
+                    } else if let image = camera.capturedImage {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
@@ -306,7 +357,6 @@ struct LocketCameraView: View {
                 guard let image = camera.capturedImage,
                       let data = image.jpegData(compressionQuality: 0.6) else { return }
                 onCapture(data)
-                dismiss()
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: "checkmark")

@@ -9,6 +9,7 @@ struct ClientCheckInView: View {
     @State private var isProcessing = false
     @State private var showSuccess = false
     @State private var checkedInSession: TrainingGymSession?
+    @State private var pendingSession: TrainingGymSession?
     @State private var isCheckingWifi = true
 
     // MARK: - Session helpers
@@ -20,12 +21,14 @@ struct ClientCheckInView: View {
             .sorted { $0.scheduledDate < $1.scheduledDate }
     }
 
+    /// Session chưa có ảnh check-in của client và chưa hoàn thành
     private var nextSession: TrainingGymSession? {
-        todaySessions.first { !$0.isCompleted && !$0.isCheckedIn && !$0.isAbsent }
+        todaySessions.first { !$0.isCompleted && $0.clientCheckInPhotoURL == nil && !$0.isAbsent }
     }
 
+    /// Sessions mà client đã gửi ảnh check-in hoặc PT đã xác nhận
     private var checkedInSessions: [TrainingGymSession] {
-        todaySessions.filter { $0.isCheckedIn || $0.isCompleted }
+        todaySessions.filter { $0.clientCheckInPhotoURL != nil || $0.isCompleted }
     }
 
     // MARK: - Stats
@@ -34,7 +37,7 @@ struct ClientCheckInView: View {
         let cal = Calendar.current
         return syncManager.sessions.filter {
             cal.isDate($0.scheduledDate, equalTo: Date(), toGranularity: .month) &&
-            ($0.isCompleted || $0.isCheckedIn)
+            ($0.isCompleted || $0.clientCheckInPhotoURL != nil)
         }.count
     }
 
@@ -45,7 +48,7 @@ struct ClientCheckInView: View {
         for _ in 0..<60 {
             let hit = syncManager.sessions.contains {
                 cal.isDate($0.scheduledDate, inSameDayAs: checkDate) &&
-                ($0.isCompleted || $0.isCheckedIn)
+                ($0.isCompleted || $0.clientCheckInPhotoURL != nil)
             }
             guard hit else { break }
             streak += 1
@@ -59,13 +62,13 @@ struct ClientCheckInView: View {
         guard let weekInterval = cal.dateInterval(of: .weekOfYear, for: Date()) else { return 0 }
         return syncManager.sessions.filter {
             weekInterval.contains($0.scheduledDate) &&
-            ($0.isCompleted || $0.isCheckedIn)
+            ($0.clientCheckInPhotoURL != nil || $0.isCompleted)
         }.count
     }
 
     private var recentCheckIns: [TrainingGymSession] {
         syncManager.sessions
-            .filter { $0.isCheckedIn || $0.isCompleted }
+            .filter { $0.clientCheckInPhotoURL != nil || $0.isCompleted }
             .sorted { $0.scheduledDate > $1.scheduledDate }
             .prefix(4)
             .map { $0 }
@@ -108,8 +111,9 @@ struct ClientCheckInView: View {
         .refreshable { await syncManager.refresh() }
         .fullScreenCover(isPresented: $showCamera) {
             LocketCameraView { data in
-                guard let session = nextSession else { return }
+                guard let session = pendingSession else { return }
                 checkedInSession = session
+                showCamera = false
                 Task {
                     isProcessing = true
                     let success = await syncManager.clientCheckIn(session: session, photoData: data)
@@ -326,7 +330,10 @@ struct ClientCheckInView: View {
     // MARK: - CTA Button
 
     private func ctaButton(_ session: TrainingGymSession) -> some View {
-        Button { showCamera = true } label: {
+        Button {
+            pendingSession = session
+            showCamera = true
+        } label: {
             HStack(spacing: 8) {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 16, weight: .semibold))
@@ -442,9 +449,13 @@ struct ClientCheckInView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.fitTextPrimary)
                 Spacer()
-                Text("Xem tất cả →")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.fitGreen)
+                Button {
+                    // TODO: Navigate to full check-in history
+                } label: {
+                    Text("Xem tất cả →")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.fitGreen)
+                }
             }
 
             if recentCheckIns.isEmpty {

@@ -20,20 +20,22 @@ extension Color {
 // MARK: - Main View
 
 struct MealPlanView: View {
+    @Environment(DataSyncManager.self) private var syncManager
     @State private var selectedDate = Date()
     @State private var showAddFood = false
     @State private var showReport = false
     @State private var waterCups = 5
-    @State private var mealEntries: [MealEntry] = MealEntry.sampleData
 
-    private let calorieGoal = 2200
-    private let proteinGoal = 150.0
-    private let carbsGoal = 280.0
-    private let fatGoal = 70.0
+    private var myProfile: Client? { syncManager.clients.first }
+
+    private var calorieGoal: Int { myProfile?.calorieGoal ?? 2200 }
+    private var proteinGoal: Double { myProfile?.proteinGoal ?? 150 }
+    private var carbsGoal: Double { myProfile?.carbsGoal ?? 280 }
+    private var fatGoal: Double { myProfile?.fatGoal ?? 70 }
 
     private var todayEntries: [MealEntry] {
         let cal = Calendar.current
-        return mealEntries.filter { cal.isDate($0.date, inSameDayAs: selectedDate) }
+        return syncManager.mealEntries.filter { cal.isDate($0.date, inSameDayAs: selectedDate) }
     }
 
     private var totalCalories: Int { todayEntries.reduce(0) { $0 + $1.calories } }
@@ -48,39 +50,59 @@ struct MealPlanView: View {
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: startOfWeek) }
     }
 
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour < 12 { return "Chào buổi sáng!" }
+        if hour < 18 { return "Chào buổi chiều!" }
+        return "Chào buổi tối!"
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    monthNavigationView
-                    weekStripView
-                    heroCardView
-                    waterTrackerView
-                    mealsSectionView
-                    if remainingCalories > 0 {
-                        suggestionBannerView
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 32)
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle("Meal Plan")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showReport = true } label: {
-                        Image(systemName: "chart.bar.fill")
-                            .foregroundStyle(Color.fitGreen)
-                    }
+        ScrollView {
+            VStack(spacing: 16) {
+                headerView
+                monthNavigationView
+                weekStripView
+                heroCardView
+                waterTrackerView
+                mealsSectionView
+                if remainingCalories > 0 {
+                    suggestionBannerView
                 }
             }
-            .profileToolbar()
-            .sheet(isPresented: $showAddFood) {
-                AddFoodView(mealEntries: $mealEntries, date: selectedDate)
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 32)
+        }
+        .background(Color(.systemBackground))
+        .refreshable { await syncManager.refresh() }
+        .sheet(isPresented: $showAddFood) {
+            AddFoodView(date: selectedDate)
+        }
+        .sheet(isPresented: $showReport) {
+            NutritionReportView()
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerView: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(greetingText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+                Text("Meal Plan")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.fitTextPrimary)
             }
-            .sheet(isPresented: $showReport) {
-                NutritionReportView(entries: mealEntries)
+            Spacer()
+            Button { showReport = true } label: {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.fitGreen)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.fitGreenSoft))
             }
         }
     }
@@ -123,6 +145,9 @@ struct MealPlanView: View {
             ForEach(weekDays, id: \.self) { day in
                 let isToday = Calendar.current.isDateInToday(day)
                 let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
+                let hasEntries = syncManager.mealEntries.contains {
+                    Calendar.current.isDate($0.date, inSameDayAs: day)
+                }
 
                 Button {
                     selectedDate = day
@@ -143,6 +168,10 @@ struct MealPlanView: View {
                                 .foregroundStyle(isSelected ? .white : Color.fitTextSecondary)
                         }
                         .frame(width: 28, height: 28)
+
+                        Circle()
+                            .fill(hasEntries ? Color.fitGreen : .clear)
+                            .frame(width: 4, height: 4)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -164,14 +193,12 @@ struct MealPlanView: View {
                     )
                 )
 
-            // Decorative circle
             Circle()
                 .fill(Color.white.opacity(0.07))
                 .frame(width: 160, height: 160)
                 .offset(x: 90, y: -20)
 
             HStack(alignment: .center) {
-                // Left — Calories
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Hôm nay")
                         .font(.system(size: 11, weight: .medium))
@@ -186,7 +213,6 @@ struct MealPlanView: View {
                             .foregroundStyle(.white.opacity(0.65))
                     }
 
-                    // Progress bar
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.white.opacity(0.2)).frame(height: 5)
@@ -200,7 +226,6 @@ struct MealPlanView: View {
 
                 Spacer()
 
-                // Right — Macro chips
                 VStack(alignment: .leading, spacing: 8) {
                     macroPill("💪", label: "Protein", value: "\(Int(totalProtein))/\(Int(proteinGoal))g")
                     macroPill("🍚", label: "Carbs", value: "\(Int(totalCarbs))/\(Int(carbsGoal))g")
@@ -300,7 +325,10 @@ struct MealPlanView: View {
                 MealTypeCard(
                     mealType: type,
                     entries: entries,
-                    onAdd: { showAddFood = true }
+                    onAdd: { showAddFood = true },
+                    onDelete: { entry in
+                        Task { await syncManager.deleteMealEntry(entry) }
+                    }
                 )
             }
         }
@@ -353,11 +381,9 @@ struct MealTypeCard: View {
     let mealType: MealEntry.MealType
     let entries: [MealEntry]
     let onAdd: () -> Void
+    let onDelete: (MealEntry) -> Void
 
     private var totalCalories: Int { entries.reduce(0) { $0 + $1.calories } }
-    private var totalProtein: Double { entries.reduce(0) { $0 + $1.protein } }
-    private var totalCarbs: Double { entries.reduce(0) { $0 + $1.carbs } }
-    private var totalFat: Double { entries.reduce(0) { $0 + $1.fat } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -367,7 +393,7 @@ struct MealTypeCard: View {
                 filledState
             }
         }
-        .background(Color(red: 0.965, green: 0.969, blue: 0.973))
+        .background(Color.fitCard)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
@@ -383,7 +409,7 @@ struct MealTypeCard: View {
 
                 Text("Thêm \(mealType.rawValue.lowercased())")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color(red: 0.612, green: 0.639, blue: 0.675))
+                    .foregroundStyle(Color.fitTextTertiary)
 
                 Spacer()
 
@@ -400,7 +426,6 @@ struct MealTypeCard: View {
         VStack(spacing: 0) {
             ForEach(entries) { entry in
                 HStack(spacing: 12) {
-                    // Icon
                     Image(systemName: mealType.icon)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.fitGreen)
@@ -412,7 +437,7 @@ struct MealTypeCard: View {
                         HStack {
                             Text(entry.name)
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                                .foregroundStyle(Color.fitTextPrimary)
                             Spacer()
                             Text("\(entry.calories) kcal")
                                 .font(.system(size: 13, weight: .semibold))
@@ -422,7 +447,7 @@ struct MealTypeCard: View {
                         if !entry.description.isEmpty {
                             Text(entry.description)
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                .foregroundStyle(Color.fitTextSecondary)
                                 .lineLimit(1)
                         }
 
@@ -434,13 +459,19 @@ struct MealTypeCard: View {
                     }
                 }
                 .padding(16)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        onDelete(entry)
+                    } label: {
+                        Label("Xoá", systemImage: "trash")
+                    }
+                }
 
                 if entry.id != entries.last?.id {
                     Divider().padding(.leading, 70)
                 }
             }
 
-            // Add more button
             Button(action: onAdd) {
                 HStack {
                     Image(systemName: "plus")

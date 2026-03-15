@@ -40,21 +40,32 @@ struct ProfileToolbarModifier: ViewModifier {
         return String(displayName.prefix(2)).uppercased()
     }
 
+    private var avatarURL: URL? {
+        guard let urlStr = authManager.userProfile?.avatarUrl, !urlStr.isEmpty else { return nil }
+        return URL(string: urlStr)
+    }
+
     func body(content: Content) -> some View {
         content
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showingProfile = true } label: {
-                        if !initials.isEmpty {
-                            Text(initials)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .frame(width: 34, height: 34)
-                                .background(
-                                    Circle()
-                                        .fill(accentColor.gradient)
+                        if let url = avatarURL {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 34, height: 34)
+                                        .clipShape(Circle())
                                         .shadow(color: accentColor.opacity(0.3), radius: 4, x: 0, y: 2)
-                                )
+                                default:
+                                    initialsView
+                                }
+                            }
+                        } else if !initials.isEmpty {
+                            initialsView
                         } else {
                             Image(systemName: "person.circle.fill")
                                 .font(.title3)
@@ -66,6 +77,18 @@ struct ProfileToolbarModifier: ViewModifier {
             .sheet(isPresented: $showingProfile) {
                 ProfileView()
             }
+    }
+
+    private var initialsView: some View {
+        Text(initials)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: 34, height: 34)
+            .background(
+                Circle()
+                    .fill(accentColor.gradient)
+                    .shadow(color: accentColor.opacity(0.3), radius: 4, x: 0, y: 2)
+            )
     }
 }
 

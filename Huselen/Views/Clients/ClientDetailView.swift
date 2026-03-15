@@ -19,16 +19,28 @@ struct ClientDetailView: View {
             }
 
             Section("Chỉ số cơ thể") {
-                if client.weight > 0 {
-                    LabeledContent("Cân nặng", value: String(format: "%.1f kg", client.weight))
+                if client.height > 0 { LabeledContent("Chiều cao", value: String(format: "%.1f cm", client.height)) }
+                if client.weight > 0 { LabeledContent("Cân nặng", value: String(format: "%.1f kg", client.weight)) }
+                if client.bodyFat > 0 { LabeledContent("Tỷ lệ mỡ", value: String(format: "%.1f%%", client.bodyFat)) }
+                if client.muscleMass > 0 { LabeledContent("Khối lượng cơ", value: String(format: "%.1f kg", client.muscleMass)) }
+                if client.height == 0 && client.weight == 0 && client.bodyFat == 0 && client.muscleMass == 0 {
+                    Text("Chưa cập nhật")
+                        .foregroundStyle(.secondary)
                 }
-                if client.bodyFat > 0 {
-                    LabeledContent("Tỷ lệ mỡ", value: String(format: "%.1f%%", client.bodyFat))
-                }
-                if client.muscleMass > 0 {
-                    LabeledContent("Khối lượng cơ", value: String(format: "%.1f kg", client.muscleMass))
-                }
-                if client.weight == 0 && client.bodyFat == 0 && client.muscleMass == 0 {
+            }
+
+            Section("Số đo cơ thể") {
+                if client.neck > 0 { LabeledContent("Cổ", value: String(format: "%.1f cm", client.neck)) }
+                if client.shoulder > 0 { LabeledContent("Vai", value: String(format: "%.1f cm", client.shoulder)) }
+                if client.arm > 0 { LabeledContent("Cánh tay", value: String(format: "%.1f cm", client.arm)) }
+                if client.chest > 0 { LabeledContent("Vòng 1", value: String(format: "%.1f cm", client.chest)) }
+                if client.waist > 0 { LabeledContent("Eo", value: String(format: "%.1f cm", client.waist)) }
+                if client.hip > 0 { LabeledContent("Hông", value: String(format: "%.1f cm", client.hip)) }
+                if client.thigh > 0 { LabeledContent("Đùi", value: String(format: "%.1f cm", client.thigh)) }
+                if client.calf > 0 { LabeledContent("Bắp chân", value: String(format: "%.1f cm", client.calf)) }
+                if client.lowerHip > 0 { LabeledContent("Vòng 3", value: String(format: "%.1f cm", client.lowerHip)) }
+                let hasNoMeasurements = client.neck == 0 && client.shoulder == 0 && client.arm == 0 && client.chest == 0 && client.waist == 0 && client.hip == 0 && client.thigh == 0 && client.calf == 0 && client.lowerHip == 0
+                if hasNoMeasurements {
                     Text("Chưa cập nhật")
                         .foregroundStyle(.secondary)
                 }

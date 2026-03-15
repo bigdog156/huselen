@@ -1,15 +1,18 @@
 import SwiftUI
 
 struct NutritionReportView: View {
-    let entries: [MealEntry]
+    @Environment(DataSyncManager.self) private var syncManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var weekOffset = 0
 
-    private let calorieGoal = 2200
-    private let proteinGoal = 150.0
-    private let carbsGoal = 280.0
-    private let fatGoal = 70.0
+    private var myProfile: Client? { syncManager.clients.first }
+    private var calorieGoal: Int { myProfile?.calorieGoal ?? 2200 }
+    private var proteinGoal: Double { myProfile?.proteinGoal ?? 150 }
+    private var carbsGoal: Double { myProfile?.carbsGoal ?? 280 }
+    private var fatGoal: Double { myProfile?.fatGoal ?? 70 }
+
+    private var entries: [MealEntry] { syncManager.mealEntries }
 
     private var weekDates: [Date] {
         let cal = Calendar.current
@@ -22,9 +25,6 @@ struct NutritionReportView: View {
         guard let first = weekDates.first, let last = weekDates.last else { return "" }
         let df = DateFormatter()
         df.dateFormat = "d"
-        let monthFormatter = DateFormatter()
-        monthFormatter.locale = Locale(identifier: "vi_VN")
-        monthFormatter.dateFormat = "d – d MMMM, yyyy"
         return "\(df.string(from: first)) – \(df.string(from: last)) Tháng \(Calendar.current.component(.month, from: first)), \(Calendar.current.component(.year, from: first))"
     }
 
@@ -58,16 +58,6 @@ struct NutritionReportView: View {
     private var totalCarbs: Double { weekEntries.reduce(0) { $0 + $1.carbs } }
     private var totalFat: Double { weekEntries.reduce(0) { $0 + $1.fat } }
 
-    private let fitGreen = Color(red: 0.133, green: 0.773, blue: 0.369)
-    private let fitGreenDark = Color(red: 0.086, green: 0.639, blue: 0.290)
-    private let fitCard = Color(red: 0.965, green: 0.969, blue: 0.973)
-    private let fitTextPrimary = Color(red: 0.102, green: 0.102, blue: 0.102)
-    private let fitTextSecondary = Color(red: 0.420, green: 0.447, blue: 0.502)
-    private let fitTextTertiary = Color(red: 0.612, green: 0.639, blue: 0.675)
-    private let fitIndigo = Color(red: 0.388, green: 0.400, blue: 0.945)
-    private let fitOrange = Color(red: 0.851, green: 0.467, blue: 0.024)
-    private let fitCoral = Color(red: 1.0, green: 0.420, blue: 0.420)
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -96,7 +86,7 @@ struct NutritionReportView: View {
                     Button { } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 16))
-                            .foregroundStyle(fitGreen)
+                            .foregroundStyle(Color.fitGreen)
                     }
                 }
             }
@@ -112,14 +102,14 @@ struct NutritionReportView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(fitTextSecondary)
+                    .foregroundStyle(Color.fitTextSecondary)
             }
 
             Spacer()
 
             Text(weekLabel)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(fitTextPrimary)
+                .foregroundStyle(Color.fitTextPrimary)
 
             Spacer()
 
@@ -128,7 +118,7 @@ struct NutritionReportView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(weekOffset < 0 ? fitTextSecondary : fitTextTertiary)
+                    .foregroundStyle(weekOffset < 0 ? Color.fitTextSecondary : Color.fitTextTertiary)
             }
             .disabled(weekOffset >= 0)
         }
@@ -141,7 +131,7 @@ struct NutritionReportView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(LinearGradient(
-                    colors: [fitGreen, fitGreenDark],
+                    colors: [Color.fitGreen, Color.fitGreenDark],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ))
@@ -188,12 +178,12 @@ struct NutritionReportView: View {
             HStack {
                 Text("CALO THEO NGÀY")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(fitTextTertiary)
+                    .foregroundStyle(Color.fitTextTertiary)
                     .tracking(1)
                 Spacer()
                 Text("Mục tiêu: \(calorieGoal)")
                     .font(.system(size: 11))
-                    .foregroundStyle(fitTextSecondary)
+                    .foregroundStyle(Color.fitTextSecondary)
             }
 
             VStack(spacing: 8) {
@@ -211,13 +201,13 @@ struct NutritionReportView: View {
                             RoundedRectangle(cornerRadius: isToday ? 8 : 6, style: .continuous)
                                 .fill(
                                     kcal == 0
-                                    ? fitCard
-                                    : (isToday ? fitGreen : fitGreen.opacity(0.35))
+                                    ? Color.fitCard
+                                    : (isToday ? Color.fitGreen : Color.fitGreen.opacity(0.35))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: isToday ? 8 : 6, style: .continuous)
                                         .strokeBorder(
-                                            kcal > 0 && !isToday ? fitGreen.opacity(0.5) : Color.clear,
+                                            kcal > 0 && !isToday ? Color.fitGreen.opacity(0.5) : Color.clear,
                                             lineWidth: 1
                                         )
                                 )
@@ -226,7 +216,7 @@ struct NutritionReportView: View {
 
                             Text(vietWeekdayShort(day))
                                 .font(.system(size: 10, weight: isToday ? .bold : .medium))
-                                .foregroundStyle(isToday ? fitGreen : fitTextTertiary)
+                                .foregroundStyle(isToday ? Color.fitGreen : Color.fitTextTertiary)
                         }
                         .frame(maxWidth: .infinity, maxHeight: maxHeight + 20, alignment: .bottom)
                     }
@@ -235,7 +225,7 @@ struct NutritionReportView: View {
                 .padding(.horizontal, 4)
             }
             .padding(16)
-            .background(fitCard)
+            .background(Color.fitCard)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
@@ -246,7 +236,7 @@ struct NutritionReportView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("PHÂN BỔ DINH DƯỠNG")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(fitTextTertiary)
+                .foregroundStyle(Color.fitTextTertiary)
                 .tracking(1)
 
             let daysWithData = max(1, weekDates.filter { caloriesFor($0) > 0 }.count)
@@ -254,12 +244,12 @@ struct NutritionReportView: View {
             let avgCarbs = totalCarbs / Double(daysWithData)
             let avgFat = totalFat / Double(daysWithData)
 
-            macroProgressRow("💪 Protein", value: avgProtein, goal: proteinGoal, color: fitIndigo)
-            macroProgressRow("🍚 Carbs", value: avgCarbs, goal: carbsGoal, color: fitOrange)
-            macroProgressRow("🥑 Fat", value: avgFat, goal: fatGoal, color: fitCoral)
+            macroProgressRow("💪 Protein", value: avgProtein, goal: proteinGoal, color: Color.fitIndigo)
+            macroProgressRow("🍚 Carbs", value: avgCarbs, goal: carbsGoal, color: Color.fitOrange)
+            macroProgressRow("🥑 Fat", value: avgFat, goal: fatGoal, color: Color.fitCoral)
         }
         .padding(16)
-        .background(fitCard)
+        .background(Color.fitCard)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
@@ -268,7 +258,7 @@ struct NutritionReportView: View {
             HStack {
                 Text(label)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(fitTextPrimary)
+                    .foregroundStyle(Color.fitTextPrimary)
                 Spacer()
                 Text(String(format: "%.0fg / %.0fg", value, goal))
                     .font(.system(size: 13, weight: .semibold))
@@ -298,10 +288,10 @@ struct NutritionReportView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Streak \(daysOnGoal) ngày liên tiếp!")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(fitOrange)
+                    .foregroundStyle(Color.fitOrange)
                 Text("Tiếp tục duy trì để đạt huy hiệu tuần")
                     .font(.system(size: 11))
-                    .foregroundStyle(fitTextSecondary)
+                    .foregroundStyle(Color.fitTextSecondary)
             }
             Spacer()
         }

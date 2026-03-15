@@ -47,9 +47,23 @@ struct GymClient: Codable {
     var name: String
     var phone: String
     var email: String
+    var height: Double
     var weight: Double
     var bodyFat: Double
     var muscleMass: Double
+    var neck: Double
+    var shoulder: Double
+    var arm: Double
+    var chest: Double
+    var waist: Double
+    var hip: Double
+    var thigh: Double
+    var calf: Double
+    var lowerHip: Double
+    var calorieGoal: Int
+    var proteinGoal: Double
+    var carbsGoal: Double
+    var fatGoal: Double
     var goal: String
     var notes: String
     var branchId: UUID?
@@ -58,9 +72,15 @@ struct GymClient: Codable {
         case id
         case ownerId = "owner_id"
         case profileId = "profile_id"
-        case name, phone, email, weight
+        case name, phone, email, height, weight
         case bodyFat = "body_fat"
         case muscleMass = "muscle_mass"
+        case neck, shoulder, arm, chest, waist, hip, thigh, calf
+        case lowerHip = "lower_hip"
+        case calorieGoal = "calorie_goal"
+        case proteinGoal = "protein_goal"
+        case carbsGoal = "carbs_goal"
+        case fatGoal = "fat_goal"
         case goal, notes
         case branchId = "branch_id"
     }
@@ -83,6 +103,7 @@ struct GymSession: Codable {
     var absenceReason: String
     var absencePhotoUrl: String?
     var clientCheckInPhotoUrl: String?
+    var clientCheckInTime: Date?
     var isMakeup: Bool
     var originalSessionId: UUID?
 
@@ -103,6 +124,7 @@ struct GymSession: Codable {
         case absenceReason = "absence_reason"
         case absencePhotoUrl = "absence_photo_url"
         case clientCheckInPhotoUrl = "client_check_in_photo_url"
+        case clientCheckInTime = "client_check_in_time"
         case isMakeup = "is_makeup"
         case originalSessionId = "original_session_id"
     }
@@ -164,6 +186,29 @@ struct GymAttendance: Codable {
     }
 }
 
+struct GymMealEntry: Codable {
+    var id: UUID?
+    let ownerId: UUID
+    var clientId: UUID?
+    var name: String
+    var description: String
+    var calories: Int
+    var protein: Double
+    var carbs: Double
+    var fat: Double
+    var mealType: String
+    var date: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ownerId = "owner_id"
+        case clientId = "client_id"
+        case name, description, calories, protein, carbs, fat
+        case mealType = "meal_type"
+        case date
+    }
+}
+
 struct GymBranchDTO: Codable {
     var id: UUID?
     let ownerId: UUID
@@ -195,6 +240,7 @@ final class DataSyncManager {
     var sessions: [TrainingGymSession] = []
     var purchases: [PackagePurchase] = []
     var attendances: [TrainerAttendance] = []
+    var mealEntries: [MealEntry] = []
     var gymWiFiSSIDs: [String] = []
     var branches: [GymBranch] = []
     var selectedBranchId: UUID?
@@ -232,6 +278,7 @@ final class DataSyncManager {
         sessions = []
         purchases = []
         attendances = []
+        mealEntries = []
         branches = []
     }
 
@@ -327,9 +374,23 @@ final class DataSyncManager {
                 name: client.name,
                 phone: client.phone,
                 email: client.email,
+                height: client.height,
                 weight: client.weight,
                 bodyFat: client.bodyFat,
                 muscleMass: client.muscleMass,
+                neck: client.neck,
+                shoulder: client.shoulder,
+                arm: client.arm,
+                chest: client.chest,
+                waist: client.waist,
+                hip: client.hip,
+                thigh: client.thigh,
+                calf: client.calf,
+                lowerHip: client.lowerHip,
+                calorieGoal: client.calorieGoal,
+                proteinGoal: client.proteinGoal,
+                carbsGoal: client.carbsGoal,
+                fatGoal: client.fatGoal,
                 goal: client.goal,
                 notes: client.notes,
                 branchId: client.branchId
@@ -358,9 +419,23 @@ final class DataSyncManager {
                     "name": AnyJSON.string(client.name),
                     "phone": AnyJSON.string(client.phone),
                     "email": AnyJSON.string(client.email),
+                    "height": AnyJSON.double(client.height),
                     "weight": AnyJSON.double(client.weight),
                     "body_fat": AnyJSON.double(client.bodyFat),
                     "muscle_mass": AnyJSON.double(client.muscleMass),
+                    "neck": AnyJSON.double(client.neck),
+                    "shoulder": AnyJSON.double(client.shoulder),
+                    "arm": AnyJSON.double(client.arm),
+                    "chest": AnyJSON.double(client.chest),
+                    "waist": AnyJSON.double(client.waist),
+                    "hip": AnyJSON.double(client.hip),
+                    "thigh": AnyJSON.double(client.thigh),
+                    "calf": AnyJSON.double(client.calf),
+                    "lower_hip": AnyJSON.double(client.lowerHip),
+                    "calorie_goal": AnyJSON.integer(client.calorieGoal),
+                    "protein_goal": AnyJSON.double(client.proteinGoal),
+                    "carbs_goal": AnyJSON.double(client.carbsGoal),
+                    "fat_goal": AnyJSON.double(client.fatGoal),
                     "goal": AnyJSON.string(client.goal),
                     "notes": AnyJSON.string(client.notes),
                     "branch_id": client.branchId.map { AnyJSON.string($0.uuidString) } ?? .null,
@@ -413,6 +488,7 @@ final class DataSyncManager {
                 absenceReason: session.absenceReason,
                 absencePhotoUrl: session.absencePhotoURL,
                 clientCheckInPhotoUrl: session.clientCheckInPhotoURL,
+                clientCheckInTime: session.clientCheckInTime,
                 isMakeup: session.isMakeup,
                 originalSessionId: session.originalSessionId
             )
@@ -454,6 +530,7 @@ final class DataSyncManager {
                     absenceReason: session.absenceReason,
                     absencePhotoUrl: session.absencePhotoURL,
                     clientCheckInPhotoUrl: session.clientCheckInPhotoURL,
+                    clientCheckInTime: session.clientCheckInTime,
                     isMakeup: session.isMakeup,
                     originalSessionId: session.originalSessionId
                 )
@@ -518,6 +595,9 @@ final class DataSyncManager {
             if let clientPhotoURL = session.clientCheckInPhotoURL {
                 updates["client_check_in_photo_url"] = .string(clientPhotoURL)
             }
+            if let clientCheckInTime = session.clientCheckInTime {
+                updates["client_check_in_time"] = .string(formatter.string(from: clientCheckInTime))
+            }
             try await supabase
                 .from("training_sessions")
                 .update(updates)
@@ -529,15 +609,28 @@ final class DataSyncManager {
     }
 
     /// Client check-in with photo (Locket-style)
+    /// Only updates client_check_in_photo_url and client_check_in_time — does NOT touch PT fields
     func clientCheckIn(session: TrainingGymSession, photoData: Data) async -> Bool {
         do {
             let clientId = session.client?.id.uuidString ?? "unknown"
             let path = "client-checkin/\(clientId)/\(UUID().uuidString).jpg"
             let url = try await uploadAttendancePhoto(photoData, path: path)
+
+            let now = Date()
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+            try await supabase
+                .from("training_sessions")
+                .update([
+                    "client_check_in_photo_url": AnyJSON.string(url),
+                    "client_check_in_time": AnyJSON.string(formatter.string(from: now)),
+                ])
+                .eq("id", value: session.id.uuidString)
+                .execute()
+
             session.clientCheckInPhotoURL = url
-            session.isCheckedIn = true
-            session.checkInTime = Date()
-            await updateSession(session)
+            session.clientCheckInTime = now
             return true
         } catch {
             errorMessage = "Lỗi check-in: \(error.localizedDescription)"
@@ -727,9 +820,23 @@ final class DataSyncManager {
                     existing.name = remote.name
                     existing.phone = remote.phone
                     existing.email = remote.email
+                    existing.height = remote.height
                     existing.weight = remote.weight
                     existing.bodyFat = remote.bodyFat
                     existing.muscleMass = remote.muscleMass
+                    existing.neck = remote.neck
+                    existing.shoulder = remote.shoulder
+                    existing.arm = remote.arm
+                    existing.chest = remote.chest
+                    existing.waist = remote.waist
+                    existing.hip = remote.hip
+                    existing.thigh = remote.thigh
+                    existing.calf = remote.calf
+                    existing.lowerHip = remote.lowerHip
+                    existing.calorieGoal = remote.calorieGoal
+                    existing.proteinGoal = remote.proteinGoal
+                    existing.carbsGoal = remote.carbsGoal
+                    existing.fatGoal = remote.fatGoal
                     existing.goal = remote.goal
                     existing.notes = remote.notes
                     existing.profileId = remote.profileId
@@ -737,7 +844,7 @@ final class DataSyncManager {
                     existing.branch = remote.branchId.flatMap { branchById[$0] }
                     newClients.append(existing)
                 } else {
-                    let c = Client(name: remote.name, phone: remote.phone, email: remote.email, weight: remote.weight, bodyFat: remote.bodyFat, muscleMass: remote.muscleMass, goal: remote.goal, notes: remote.notes, profileId: remote.profileId)
+                    let c = Client(name: remote.name, phone: remote.phone, email: remote.email, height: remote.height, weight: remote.weight, bodyFat: remote.bodyFat, muscleMass: remote.muscleMass, neck: remote.neck, shoulder: remote.shoulder, arm: remote.arm, chest: remote.chest, waist: remote.waist, hip: remote.hip, thigh: remote.thigh, calf: remote.calf, lowerHip: remote.lowerHip, calorieGoal: remote.calorieGoal, proteinGoal: remote.proteinGoal, carbsGoal: remote.carbsGoal, fatGoal: remote.fatGoal, goal: remote.goal, notes: remote.notes, profileId: remote.profileId)
                     c.id = remoteId
                     c.branchId = remote.branchId
                     c.branch = remote.branchId.flatMap { branchById[$0] }
@@ -833,6 +940,7 @@ final class DataSyncManager {
                     existing.absenceReason = remote.absenceReason
                     existing.absencePhotoURL = remote.absencePhotoUrl
                     existing.clientCheckInPhotoURL = remote.clientCheckInPhotoUrl
+                    existing.clientCheckInTime = remote.clientCheckInTime
                     existing.isMakeup = remote.isMakeup
                     existing.originalSessionId = remote.originalSessionId
                     if let tid = remote.trainerId { existing.trainer = trainerById[tid] }
@@ -858,6 +966,7 @@ final class DataSyncManager {
                     session.absenceReason = remote.absenceReason
                     session.absencePhotoURL = remote.absencePhotoUrl
                     session.clientCheckInPhotoURL = remote.clientCheckInPhotoUrl
+                    session.clientCheckInTime = remote.clientCheckInTime
                     session.isMakeup = remote.isMakeup
                     session.originalSessionId = remote.originalSessionId
                     newSessions.append(session)
@@ -907,6 +1016,37 @@ final class DataSyncManager {
                 }
             }
 
+            // Fetch meal entries
+            let remoteMeals: [GymMealEntry]
+            if role == .client {
+                let clientId = newClients.first?.id
+                if let cid = clientId {
+                    remoteMeals = (try? await supabase.from("meal_entries").select()
+                        .eq("client_id", value: cid.uuidString).execute().value) ?? []
+                } else {
+                    remoteMeals = []
+                }
+            } else {
+                remoteMeals = (try? await supabase.from("meal_entries").select().execute().value) ?? []
+            }
+            var newMeals: [MealEntry] = []
+            for remote in remoteMeals {
+                guard let remoteId = remote.id else { continue }
+                var entry = MealEntry(
+                    clientId: remote.clientId,
+                    name: remote.name,
+                    description: remote.description,
+                    calories: remote.calories,
+                    protein: remote.protein,
+                    carbs: remote.carbs,
+                    fat: remote.fat,
+                    mealType: MealEntry.MealType(rawValue: remote.mealType) ?? .breakfast,
+                    date: remote.date
+                )
+                entry.id = remoteId
+                newMeals.append(entry)
+            }
+
             // Update arrays
             branches = newBranches
             trainers = newTrainers
@@ -914,6 +1054,7 @@ final class DataSyncManager {
             purchases = newPurchases
             sessions = newSessions
             attendances = newAttendances
+            mealEntries = newMeals
 
         } catch {
             print("fetchAll error: \(error)")
@@ -925,6 +1066,54 @@ final class DataSyncManager {
         }
 
         await fetchGymWiFiSSIDs()
+    }
+
+    // MARK: - Meal Entry CRUD
+
+    @discardableResult
+    func createMealEntry(_ entry: MealEntry) async -> Bool {
+        do {
+            let userId = try await dataOwnerId()
+            let dto = GymMealEntry(
+                ownerId: userId,
+                clientId: entry.clientId,
+                name: entry.name,
+                description: entry.description,
+                calories: entry.calories,
+                protein: entry.protein,
+                carbs: entry.carbs,
+                fat: entry.fat,
+                mealType: entry.mealType.rawValue,
+                date: entry.date
+            )
+            let result: GymMealEntry = try await supabase
+                .from("meal_entries")
+                .insert(dto)
+                .select()
+                .single()
+                .execute()
+                .value
+            var saved = entry
+            saved.id = result.id!
+            mealEntries.append(saved)
+            return true
+        } catch {
+            errorMessage = "Lỗi lưu bữa ăn: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func deleteMealEntry(_ entry: MealEntry) async {
+        do {
+            try await supabase
+                .from("meal_entries")
+                .delete()
+                .eq("id", value: entry.id.uuidString)
+                .execute()
+            mealEntries.removeAll { $0.id == entry.id }
+        } catch {
+            errorMessage = "Lỗi xoá bữa ăn: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Branch CRUD
