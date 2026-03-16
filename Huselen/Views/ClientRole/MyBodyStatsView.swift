@@ -1,6 +1,65 @@
 import SwiftUI
+import Charts
 
-// MARK: - Cross-platform helper
+// MARK: - Chart Enums
+
+enum BodyStatMetric: String, CaseIterable, Identifiable {
+    case weight, bodyFat, muscleMass, waist, chest, hip
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .weight:     return "Cân nặng"
+        case .bodyFat:    return "Tỷ lệ mỡ"
+        case .muscleMass: return "Cơ bắp"
+        case .waist:      return "Eo"
+        case .chest:      return "Vòng 1"
+        case .hip:        return "Hông"
+        }
+    }
+    var unit: String {
+        switch self {
+        case .weight, .muscleMass: return "kg"
+        case .bodyFat:             return "%"
+        default:                   return "cm"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .weight:     return Color.fitGreen
+        case .bodyFat:    return Color.fitOrange
+        case .muscleMass: return Color.fitIndigo
+        case .waist:      return Color.fitCoral
+        case .chest:      return Color.fitLavender
+        case .hip:        return Color.fitBlue
+        }
+    }
+    var lowerIsBetter: Bool { self == .bodyFat || self == .waist || self == .hip }
+
+    func value(from log: BodyStatLog) -> Double? {
+        switch self {
+        case .weight:     return log.weight
+        case .bodyFat:    return log.bodyFat
+        case .muscleMass: return log.muscleMass
+        case .waist:      return log.waist
+        case .chest:      return log.chest
+        case .hip:        return log.hip
+        }
+    }
+}
+
+enum StatRange: String, CaseIterable {
+    case week = "7N"
+    case month = "30N"
+    case threeMonths = "3T"
+    var days: Int {
+        switch self {
+        case .week:        return 7
+        case .month:       return 30
+        case .threeMonths: return 90
+        }
+    }
+}
 
 private extension View {
     func decimalKeyboard() -> some View {
@@ -16,6 +75,8 @@ private extension View {
 struct MyBodyStatsView: View {
     @Environment(DataSyncManager.self) private var syncManager
     @State private var showUpdateSheet = false
+    @State private var selectedMetric: BodyStatMetric = .weight
+    @State private var selectedRange: StatRange = .month
 
     private var myProfile: Client? { syncManager.clients.first }
 
@@ -74,6 +135,9 @@ struct MyBodyStatsView: View {
                 heroCard
                     .padding(.horizontal, 24)
 
+                progressChartsSection
+                    .padding(.horizontal, 24)
+
                 bodyStatsSection
                     .padding(.horizontal, 24)
 
@@ -88,7 +152,11 @@ struct MyBodyStatsView: View {
             .padding(.bottom, 24)
         }
         .background(Color(.systemBackground))
-        .refreshable { await syncManager.refresh() }
+        .refreshable {
+            await syncManager.refresh()
+            await syncManager.fetchBodyStatLogs()
+        }
+        .task { await syncManager.fetchBodyStatLogs() }
         .sheet(isPresented: $showUpdateSheet) {
             UpdateBodyStatsSheet(client: myProfile)
         }
@@ -153,6 +221,183 @@ struct MyBodyStatsView: View {
                     .foregroundStyle(.white)
             }
             .padding(20)
+        }
+    }
+
+    // MARK: - Progress Charts
+
+    private var chartData: [BodyStatLog] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -selectedRange.days, to: Date()) ?? Date()
+        return syncManager.bodyStatLogs.filter {
+            $0.loggedAt >= cutoff && selectedMetric.value(from: $0) != nil
+        }
+    }
+
+    private func diffColor(_ diff: Double) -> Color {
+        selectedMetric.lowerIsBetter
+            ? (diff < 0 ? Color.fitGreen : Color.fitCoral)
+            : (diff > 0 ? Color.fitGreen : Color.fitCoral)
+    }
+
+    private var progressChartsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("LỊCH SỬ TIẾN TRÌNH")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.fitTextTertiary)
+                .tracking(1)
+
+            VStack(spacing: 14) {
+                // Range picker
+                HStack(spacing: 0) {
+                    ForEach(StatRange.allCases, id: \.self) { range in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { selectedRange = range }
+                        } label: {
+                            Text(range.rawValue)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(selectedRange == range ? .white : Color.fitTextSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(selectedRange == range ? Color.fitGreen : Color.clear)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(Color(.systemGray6)))
+
+                // Metric chips
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(BodyStatMetric.allCases) { metric in
+                            let selected = selectedMetric == metric
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) { selectedMetric = metric }
+                            } label: {
+                                Text(metric.displayName)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(selected ? metric.color : Color.fitTextSecondary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(selected ? metric.color.opacity(0.13) : Color(.systemGray6))
+                                            .overlay(
+                                                Capsule()
+                                                    .strokeBorder(selected ? metric.color.opacity(0.45) : Color.clear, lineWidth: 1)
+                                            )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+
+                // Chart or empty state
+                if chartData.count < 2 {
+                    VStack(spacing: 10) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.system(size: 34))
+                            .foregroundStyle(Color.fitTextTertiary.opacity(0.5))
+                        Text("Chưa đủ dữ liệu\nCập nhật chỉ số mỗi ngày để xem biểu đồ!")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
+                } else {
+                    let latestVal = chartData.last.flatMap { selectedMetric.value(from: $0) } ?? 0
+                    let firstVal  = chartData.first.flatMap { selectedMetric.value(from: $0) } ?? 0
+                    let diff = latestVal - firstVal
+
+                    // Summary row
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(String(format: "%.1f %@", latestVal, selectedMetric.unit))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundStyle(selectedMetric.color)
+                            Text("Hiện tại")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.fitTextTertiary)
+                        }
+                        Spacer()
+                        if abs(diff) > 0.01 {
+                            HStack(spacing: 4) {
+                                Image(systemName: diff > 0 ? "arrow.up.right" : "arrow.down.right")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(String(format: "%+.1f %@", diff, selectedMetric.unit))
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundStyle(diffColor(diff))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(diffColor(diff).opacity(0.12)))
+                        }
+                    }
+
+                    // Line + Area chart
+                    Chart(chartData) { log in
+                        if let val = selectedMetric.value(from: log) {
+                            AreaMark(
+                                x: .value("Ngày", log.loggedAt),
+                                y: .value(selectedMetric.displayName, val)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [selectedMetric.color.opacity(0.22), selectedMetric.color.opacity(0)],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            )
+                            LineMark(
+                                x: .value("Ngày", log.loggedAt),
+                                y: .value(selectedMetric.displayName, val)
+                            )
+                            .foregroundStyle(selectedMetric.color)
+                            .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                            PointMark(
+                                x: .value("Ngày", log.loggedAt),
+                                y: .value(selectedMetric.displayName, val)
+                            )
+                            .foregroundStyle(selectedMetric.color)
+                            .symbolSize(25)
+                        }
+                    }
+                    .frame(height: 150)
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                            AxisValueLabel {
+                                if let date = value.as(Date.self) {
+                                    Text(date, format: .dateTime.day().month())
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Color.fitTextTertiary)
+                                }
+                            }
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3]))
+                                .foregroundStyle(Color.fitTextTertiary.opacity(0.25))
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { value in
+                            AxisValueLabel {
+                                if let v = value.as(Double.self) {
+                                    Text(String(format: "%.0f", v))
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(Color.fitTextTertiary)
+                                }
+                            }
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3]))
+                                .foregroundStyle(Color.fitTextTertiary.opacity(0.25))
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.fitCard))
         }
     }
 
@@ -495,6 +740,7 @@ struct UpdateBodyStatsSheet: View {
         if let v = Double(lowerHip)   { c.lowerHip   = v }
         Task {
             await syncManager.updateClient(c)
+            await syncManager.saveBodyStatLog(from: c)
             isSaving = false
             dismiss()
         }

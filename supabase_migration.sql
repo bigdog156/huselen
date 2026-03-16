@@ -268,3 +268,76 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gym_id UUID REFERENCES gyms(id);
 
 -- Trigger for gyms updated_at
 CREATE TRIGGER set_gyms_updated_at BEFORE UPDATE ON gyms FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- Migration: Meal Logs (MealLogView)
+-- ============================================================
+
+-- USER MEAL LOGS: stores daily meal entries per user
+CREATE TABLE IF NOT EXISTS user_meal_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    meal_type TEXT NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'afternoon', 'dinner')),
+    logged_date DATE NOT NULL,
+    logged_time TEXT,                        -- HH:mm:ss string
+    photo_url TEXT,
+    note TEXT,
+    feeling TEXT CHECK (feeling IN ('good', 'normal', 'tired')),
+    energy_level TEXT,
+    calories INTEGER,
+    protein_g DOUBLE PRECISION,
+    carbs_g DOUBLE PRECISION,
+    fat_g DOUBLE PRECISION,
+    fiber_g DOUBLE PRECISION,
+    food_items JSONB,                        -- array of MealLogFoodItem
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (user_id, meal_type, logged_date) -- one log per meal per day per user
+);
+
+-- Indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_user_meal_logs_user ON user_meal_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_meal_logs_date ON user_meal_logs(logged_date);
+CREATE INDEX IF NOT EXISTS idx_user_meal_logs_user_date ON user_meal_logs(user_id, logged_date);
+
+-- Row Level Security
+ALTER TABLE user_meal_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own meal logs" ON user_meal_logs FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+-- Updated_at trigger
+CREATE TRIGGER set_user_meal_logs_updated_at
+BEFORE UPDATE ON user_meal_logs
+FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================================
+-- Storage: meal-photos bucket
+-- ============================================================
+-- Run these in the Supabase Dashboard > Storage, or via SQL:
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('meal-photos', 'meal-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Users can upload to their own folder (userId/...)
+CREATE POLICY "Users upload own meal photos" ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (
+    bucket_id = 'meal-photos'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Users can update/delete their own photos
+CREATE POLICY "Users manage own meal photos" ON storage.objects
+FOR ALL TO authenticated
+USING (
+    bucket_id = 'meal-photos'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Anyone can read photos (bucket is public, but explicit SELECT policy)
+CREATE POLICY "Public read meal photos" ON storage.objects
+FOR SELECT
+USING (bucket_id = 'meal-photos');

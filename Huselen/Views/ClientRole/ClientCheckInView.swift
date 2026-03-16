@@ -3,14 +3,12 @@ import SwiftUI
 
 struct ClientCheckInView: View {
     @Environment(DataSyncManager.self) private var syncManager
-    @State private var wifiChecker = WiFiChecker()
 
     @State private var showCamera = false
     @State private var isProcessing = false
     @State private var showSuccess = false
     @State private var checkedInSession: TrainingGymSession?
     @State private var pendingSession: TrainingGymSession?
-    @State private var isCheckingWifi = true
 
     // MARK: - Session helpers
 
@@ -74,17 +72,12 @@ struct ClientCheckInView: View {
             .map { $0 }
     }
 
-    // MARK: - WiFi
-
-    private var wifiConnected: Bool { wifiChecker.currentSSID != nil }
-
     // MARK: - Body
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 headerView
-                wifiBannerView
                 heroCardView
 
                 if let session = nextSession {
@@ -104,10 +97,7 @@ struct ClientCheckInView: View {
             .padding(.bottom, 32)
         }
         .background(Color(.systemBackground))
-        .task {
-            await wifiChecker.fetchCurrentSSID()
-            isCheckingWifi = false
-        }
+        .task { await syncManager.refresh() }
         .refreshable { await syncManager.refresh() }
         .fullScreenCover(isPresented: $showCamera) {
             LocketCameraView { data in
@@ -169,54 +159,6 @@ struct ClientCheckInView: View {
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.white)
         }
-    }
-
-    // MARK: - WiFi Banner
-
-    private var wifiBannerView: some View {
-        let connected = !isCheckingWifi && wifiConnected
-        let checking  = isCheckingWifi
-        let dotColor  = checking ? Color.orange : (connected ? Color.fitGreen : Color.orange)
-        let bannerBg  = connected ? Color(red: 0.941, green: 0.992, blue: 0.957)
-                                  : Color(red: 1.0,   green: 0.969, blue: 0.926)
-        let borderColor = connected ? Color(red: 0.733, green: 0.969, blue: 0.816)
-                                    : Color(red: 0.992, green: 0.843, blue: 0.671)
-        let labelColor  = connected ? Color(red: 0.086, green: 0.502, blue: 0.239)
-                                    : Color(red: 0.804, green: 0.490, blue: 0.051)
-        let badgeText   = checking ? "..." : (connected ? "Tự động" : "Thủ công")
-        let wifiText    = checking ? "Đang kiểm tra WiFi..."
-                        : (connected ? "Kết nối WiFi phòng gym"
-                                     : "Chưa kết nối WiFi phòng gym")
-
-        return HStack {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 8, height: 8)
-                Text(wifiText)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(labelColor)
-            }
-            Spacer()
-            if !checking {
-                Text(badgeText)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(connected ? Color.fitGreen : Color.orange))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(bannerBg)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(borderColor, lineWidth: 1)
-                )
-        )
     }
 
     // MARK: - Hero Card

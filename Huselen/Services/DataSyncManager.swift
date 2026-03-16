@@ -244,6 +244,7 @@ final class DataSyncManager {
     var gymWiFiSSIDs: [String] = []
     var branches: [GymBranch] = []
     var selectedBranchId: UUID?
+    var bodyStatLogs: [BodyStatLog] = []
 
     func refresh() async {
         await fetchAll(role: lastRole)
@@ -444,6 +445,47 @@ final class DataSyncManager {
                 .execute()
         } catch {
             errorMessage = "Lỗi cập nhật client: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Body Stat Logs
+
+    func fetchBodyStatLogs() async {
+        do {
+            let userId = try await ownerId()
+            let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            let cutoffStr = fmt.string(from: cutoff)
+
+            let logs: [BodyStatLog] = try await supabase
+                .from("body_stat_logs")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .gte("logged_at", value: cutoffStr)
+                .order("logged_at", ascending: true)
+                .execute()
+                .value
+            bodyStatLogs = logs
+        } catch {
+            // Non-critical — leave empty
+        }
+    }
+
+    func saveBodyStatLog(from client: Client) async {
+        do {
+            let userId = try await ownerId()
+            let log = BodyStatLog(userId: userId.uuidString, loggedAt: Date(), client: client)
+            try await supabase
+                .from("body_stat_logs")
+                .upsert(log, onConflict: "user_id,logged_at")
+                .execute()
+            let today = Calendar.current.startOfDay(for: Date())
+            bodyStatLogs.removeAll { Calendar.current.isDate($0.loggedAt, inSameDayAs: today) }
+            bodyStatLogs.append(log)
+            bodyStatLogs.sort { $0.loggedAt < $1.loggedAt }
+        } catch {
+            // Non-critical
         }
     }
 

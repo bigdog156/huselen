@@ -1,6 +1,9 @@
 import SwiftUI
+import Auth
 
 struct ClientTabView: View {
+    @Environment(AuthManager.self) private var authManager
+
     var body: some View {
         TabView {
             ClientCheckInView()
@@ -18,9 +21,9 @@ struct ClientTabView: View {
                     Label("Gói của tôi", systemImage: "creditcard")
                 }
 
-            MealPlanView()
+            MealLogView(userId: authManager.currentUser?.id.uuidString ?? "")
                 .tabItem {
-                    Label("Meal Plan", systemImage: "fork.knife")
+                    Label("Meal Log", systemImage: "fork.knife")
                 }
 
             MyBodyStatsView()

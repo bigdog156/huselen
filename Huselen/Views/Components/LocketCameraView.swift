@@ -39,7 +39,7 @@ final class LocketCameraManager: NSObject {
 
     private func configureAndStart() {
         session.beginConfiguration()
-        session.sessionPreset = .photo
+        session.sessionPreset = .high
 
         let position: AVCaptureDevice.Position = isFrontCamera ? .front : .back
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),

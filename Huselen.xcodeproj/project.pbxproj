@@ -15,9 +15,22 @@
 		162FAE042F4E06E1004CA9DA /* Huselen.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Huselen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		166E60AA2F683E12002C7281 /* Exceptions for "Huselen" folder in "Huselen" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 162FAE032F4E06E1004CA9DA /* Huselen */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		162FAE062F4E06E1004CA9DA /* Huselen */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				166E60AA2F683E12002C7281 /* Exceptions for "Huselen" folder in "Huselen" target */,
+			);
 			path = Huselen;
 			sourceTree = "<group>";
 		};
@@ -267,6 +280,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Huselen/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Chụp ảnh xác nhận check-in và check-out chấm công";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Xác nhận bạn đang ở phòng tập thông qua WiFi để chấm công";
@@ -315,6 +329,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Huselen/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Chụp ảnh xác nhận check-in và check-out chấm công";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Xác nhận bạn đang ở phòng tập thông qua WiFi để chấm công";
