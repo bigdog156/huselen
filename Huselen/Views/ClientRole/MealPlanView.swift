@@ -22,9 +22,10 @@ extension Color {
 struct MealPlanView: View {
     @Environment(DataSyncManager.self) private var syncManager
     @State private var selectedDate = Date()
+    @State private var displayedMonth = Date()
     @State private var showAddFood = false
     @State private var showReport = false
-    @State private var waterCups = 5
+    @State private var waterLiters: Double = 1.5
 
     private var myProfile: Client? { syncManager.clients.first }
 
@@ -42,19 +43,52 @@ struct MealPlanView: View {
     private var totalProtein: Double { todayEntries.reduce(0) { $0 + $1.protein } }
     private var totalCarbs: Double { todayEntries.reduce(0) { $0 + $1.carbs } }
     private var totalFat: Double { todayEntries.reduce(0) { $0 + $1.fat } }
-    private var remainingCalories: Int { max(0, calorieGoal - totalCalories) }
 
-    private var weekDays: [Date] {
-        let cal = Calendar.current
-        let startOfWeek = cal.dateInterval(of: .weekOfYear, for: selectedDate)?.start ?? selectedDate
-        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: startOfWeek) }
+    private var snackCalories: Int {
+        todayEntries.filter { $0.mealType == .snack }.reduce(0) { $0 + $1.calories }
     }
 
-    private var greetingText: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        if hour < 12 { return "Chào buổi sáng!" }
-        if hour < 18 { return "Chào buổi chiều!" }
-        return "Chào buổi tối!"
+    // MARK: - Calendar helpers
+
+    private var calendarWeeks: [[Date?]] {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: displayedMonth)
+        guard let firstOfMonth = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: firstOfMonth) else { return [] }
+
+        let firstWeekday = cal.component(.weekday, from: firstOfMonth) // 1=Sun
+        let offset = firstWeekday - 1 // days to skip before 1st
+
+        var weeks: [[Date?]] = []
+        var week: [Date?] = Array(repeating: nil, count: offset)
+
+        for day in range {
+            if let date = cal.date(bySetting: .day, value: day, of: firstOfMonth) {
+                week.append(date)
+                if week.count == 7 {
+                    weeks.append(week)
+                    week = []
+                }
+            }
+        }
+        if !week.isEmpty {
+            while week.count < 7 { week.append(nil) }
+            weeks.append(week)
+        }
+        return weeks
+    }
+
+    private func hasEntries(for date: Date) -> Bool {
+        let cal = Calendar.current
+        return syncManager.mealEntries.contains { cal.isDate($0.date, inSameDayAs: date) }
+    }
+
+    private var monthLabel: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "vi_VN")
+        df.dateFormat = "MMMM, yyyy"
+        let result = df.string(from: displayedMonth)
+        return result.prefix(1).uppercased() + result.dropFirst()
     }
 
     var body: some View {
@@ -62,15 +96,12 @@ struct MealPlanView: View {
             VStack(spacing: 16) {
                 headerView
                 monthNavigationView
-                weekStripView
+                calendarGridView
                 heroCardView
-                waterTrackerView
                 mealsSectionView
-                if remainingCalories > 0 {
-                    suggestionBannerView
-                }
+                quickStatsView
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 24)
             .padding(.top, 12)
             .padding(.bottom, 32)
         }
@@ -89,7 +120,7 @@ struct MealPlanView: View {
     private var headerView: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(greetingText)
+                Text("Kế hoạch dinh dưỡng")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.fitTextSecondary)
                 Text("Meal Plan")
@@ -98,11 +129,17 @@ struct MealPlanView: View {
             }
             Spacer()
             Button { showReport = true } label: {
-                Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.fitGreen)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.fitGreenSoft))
+                let name = myProfile?.name ?? ""
+                let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
+                let display = initials.isEmpty ? "NH" : initials.uppercased()
+                ZStack {
+                    Circle()
+                        .fill(Color.fitGreen)
+                        .frame(width: 44, height: 44)
+                    Text(display)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                }
             }
         }
     }
@@ -112,7 +149,7 @@ struct MealPlanView: View {
     private var monthNavigationView: some View {
         HStack {
             Button {
-                selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: -1, to: selectedDate) ?? selectedDate
+                displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 16, weight: .semibold))
@@ -121,61 +158,75 @@ struct MealPlanView: View {
 
             Spacer()
 
-            Text(selectedDate.formatted(.dateTime.month(.wide).year()))
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+            Text(monthLabel)
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.fitTextPrimary)
 
             Spacer()
 
             Button {
-                selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: selectedDate) ?? selectedDate
+                displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.fitTextSecondary)
             }
         }
-        .padding(.top, 4)
     }
 
-    // MARK: - Week Strip
+    // MARK: - Calendar Grid
 
-    private var weekStripView: some View {
-        HStack(spacing: 0) {
-            ForEach(weekDays, id: \.self) { day in
-                let isToday = Calendar.current.isDateInToday(day)
-                let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
-                let hasEntries = syncManager.mealEntries.contains {
-                    Calendar.current.isDate($0.date, inSameDayAs: day)
+    private var calendarGridView: some View {
+        VStack(spacing: 4) {
+            // Day headers
+            HStack(spacing: 4) {
+                ForEach(["CN", "T2", "T3", "T4", "T5", "T6", "T7"], id: \.self) { label in
+                    Text(label)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.fitTextTertiary)
+                        .frame(maxWidth: .infinity)
                 }
+            }
 
-                Button {
-                    selectedDate = day
-                } label: {
-                    VStack(spacing: 6) {
-                        Text(vietWeekdayShort(day))
-                            .font(.system(size: 11, weight: isToday ? .bold : .medium))
-                            .foregroundStyle(isToday ? Color.fitGreen : Color.fitTextTertiary)
+            // Week rows
+            ForEach(Array(calendarWeeks.enumerated()), id: \.offset) { _, week in
+                HStack(spacing: 4) {
+                    ForEach(0..<7, id: \.self) { index in
+                        if let date = week[index] {
+                            let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
+                            let dayHasEntries = hasEntries(for: date)
 
-                        ZStack {
-                            if isSelected {
-                                Circle()
-                                    .fill(Color.fitGreen)
-                                    .frame(width: 28, height: 28)
+                            Button {
+                                selectedDate = date
+                            } label: {
+                                ZStack {
+                                    if isSelected {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.fitGreen)
+                                    } else if dayHasEntries {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.fitCard)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                                    .strokeBorder(Color(red: 0.898, green: 0.906, blue: 0.922), lineWidth: 1.5)
+                                            )
+                                    }
+
+                                    Text("\(Calendar.current.component(.day, from: date))")
+                                        .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                        .foregroundStyle(isSelected ? .white : Color.fitTextPrimary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
                             }
-                            Text(day.formatted(.dateTime.day()))
-                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                .foregroundStyle(isSelected ? .white : Color.fitTextSecondary)
+                            .buttonStyle(.plain)
+                        } else {
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
                         }
-                        .frame(width: 28, height: 28)
-
-                        Circle()
-                            .fill(hasEntries ? Color.fitGreen : .clear)
-                            .frame(width: 4, height: 4)
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -183,126 +234,83 @@ struct MealPlanView: View {
     // MARK: - Hero Card
 
     private var heroCardView: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.fitGreen, .fitGreenDark, Color(red: 0.024, green: 0.588, blue: 0.412)],
+                        colors: [Color(red: 0.133, green: 0.773, blue: 0.369),
+                                 Color(red: 0.086, green: 0.639, blue: 0.290),
+                                 Color(red: 0.024, green: 0.588, blue: 0.412)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
 
+            // Decorative circles
             Circle()
-                .fill(Color.white.opacity(0.07))
-                .frame(width: 160, height: 160)
-                .offset(x: 90, y: -20)
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 120, height: 120)
+                .offset(x: 240, y: -10)
 
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Hôm nay")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
+            Circle()
+                .fill(Color.white.opacity(0.04))
+                .frame(width: 80, height: 80)
+                .offset(x: 260, y: 70)
 
-                    HStack(alignment: .lastTextBaseline, spacing: 4) {
-                        Text("\(totalCalories)")
-                            .font(.system(size: 38, weight: .heavy, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("/ \(calorieGoal) kcal")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.65))
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Hôm nay")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
 
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.2)).frame(height: 5)
-                            Capsule()
-                                .fill(Color.white)
-                                .frame(width: geo.size.width * min(1, Double(totalCalories) / Double(calorieGoal)), height: 5)
-                        }
-                    }
-                    .frame(height: 5)
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    Text("\(totalCalories)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("/ \(calorieGoal) kcal")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
                 }
 
-                Spacer()
+                // Progress bar
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.3)).frame(height: 6)
+                        Capsule()
+                            .fill(Color.white)
+                            .frame(width: geo.size.width * min(1, Double(totalCalories) / Double(max(1, calorieGoal))), height: 6)
+                    }
+                }
+                .frame(height: 6)
+                .frame(width: 200)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    macroPill("💪", label: "Protein", value: "\(Int(totalProtein))/\(Int(proteinGoal))g")
-                    macroPill("🍚", label: "Carbs", value: "\(Int(totalCarbs))/\(Int(carbsGoal))g")
-                    macroPill("🥑", label: "Fat", value: "\(Int(totalFat))/\(Int(fatGoal))g")
+                // Macro row
+                HStack(spacing: 16) {
+                    Text("P: \(Int(totalProtein))g")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text("C: \(Int(totalCarbs))g")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text("F: \(Int(totalFat))g")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
             }
-            .padding(20)
+            .padding(24)
         }
         .frame(height: 160)
-    }
-
-    private func macroPill(_ emoji: String, label: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Text("\(emoji) \(label)")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-            Text(value)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.white.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    // MARK: - Water Tracker
-
-    private var waterTrackerView: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(red: 0.937, green: 0.961, blue: 1.0))
-                    .frame(width: 36, height: 36)
-                Image(systemName: "drop.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.fitBlue)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Nước uống")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.fitTextPrimary)
-                Text("\(waterCups * 250)ml / 2,000ml hôm nay")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.fitTextSecondary)
-            }
-
-            Spacer()
-
-            HStack(spacing: 5) {
-                ForEach(0..<8) { i in
-                    Button {
-                        waterCups = i < waterCups ? i : i + 1
-                    } label: {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(i < waterCups ? Color.fitBlue : Color(red: 0.75, green: 0.86, blue: 0.996))
-                            .frame(width: 8, height: 22)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding([.horizontal, .vertical], 14)
-        .background(Color.fitCard)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
     // MARK: - Meals Section
 
     private var mealsSectionView: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             HStack {
                 Text("BỮA ĂN HÔM NAY")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.fitTextTertiary)
-                    .tracking(1)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.fitTextSecondary)
+                    .tracking(0.5)
                 Spacer()
                 Button { showAddFood = true } label: {
                     HStack(spacing: 4) {
@@ -312,185 +320,148 @@ struct MealPlanView: View {
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(Color.fitGreen)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.fitGreenSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
 
             ForEach(MealEntry.MealType.allCases, id: \.self) { type in
                 let entries = todayEntries.filter { $0.mealType == type }
-                MealTypeCard(
-                    mealType: type,
-                    entries: entries,
-                    onAdd: { showAddFood = true },
-                    onDelete: { entry in
-                        Task { await syncManager.deleteMealEntry(entry) }
-                    }
-                )
-            }
-        }
-    }
-
-    // MARK: - Suggestion Banner
-
-    private var suggestionBannerView: some View {
-        Button { showAddFood = true } label: {
-            HStack(spacing: 10) {
-                Text("✨")
-                    .font(.system(size: 18))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Gợi ý bữa phụ hôm nay")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.fitTextPrimary)
-                    Text("Còn \(remainingCalories) kcal · Xem snack phù hợp")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.fitTextSecondary)
+                if !entries.isEmpty {
+                    MealSummaryCard(
+                        mealType: type,
+                        entries: entries,
+                        onDelete: { entry in
+                            Task { await syncManager.deleteMealEntry(entry) }
+                        }
+                    )
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.fitGreen)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color.fitGreenSoft)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.fitGreen.opacity(0.25), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            // Show empty state if no entries at all
+            if todayEntries.isEmpty {
+                Button { showAddFood = true } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color.fitGreen.opacity(0.4))
+                        Text("Thêm bữa ăn đầu tiên")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                    .background(Color.fitCard)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .buttonStyle(.plain)
     }
 
-    // MARK: - Helpers
+    // MARK: - Quick Stats
 
-    private func vietWeekdayShort(_ date: Date) -> String {
-        let weekday = Calendar.current.component(.weekday, from: date)
-        let map = [1: "CN", 2: "T2", 3: "T3", 4: "T4", 5: "T5", 6: "T6", 7: "T7"]
-        return map[weekday] ?? ""
+    private var quickStatsView: some View {
+        HStack(spacing: 12) {
+            // Snack card
+            VStack(spacing: 6) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.fitOrange)
+                Text("\(snackCalories)")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.fitTextPrimary)
+                Text("Snack (kcal)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 90)
+            .background(Color.fitCard)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            // Water card
+            VStack(spacing: 6) {
+                Image(systemName: "drop.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color.fitBlue)
+                Text(String(format: "%.1fL", waterLiters))
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.fitTextPrimary)
+                Text("Nước / 2.5L")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 90)
+            .background(Color.fitCard)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .onTapGesture {
+                waterLiters = min(5.0, waterLiters + 0.25)
+            }
+        }
     }
 }
 
-// MARK: - Meal Type Card
+// MARK: - Meal Summary Card
 
-struct MealTypeCard: View {
+struct MealSummaryCard: View {
     let mealType: MealEntry.MealType
     let entries: [MealEntry]
-    let onAdd: () -> Void
     let onDelete: (MealEntry) -> Void
 
     private var totalCalories: Int { entries.reduce(0) { $0 + $1.calories } }
+    private var mealLabel: String {
+        switch mealType {
+        case .breakfast: return "Bữa sáng"
+        case .lunch: return "Bữa trưa"
+        case .dinner: return "Bữa tối"
+        case .snack: return "Bữa phụ"
+        }
+    }
+    private var descriptionText: String {
+        entries.map { $0.name }.joined(separator: ", ")
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if entries.isEmpty {
-                emptyState
-            } else {
-                filledState
+        HStack(alignment: .center, spacing: 14) {
+            // Food image placeholder
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.fitGreenSoft)
+                Image(systemName: mealType.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(Color.fitGreen)
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(mealLabel)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.fitTextPrimary)
+                    Spacer()
+                    Text("\(totalCalories) kcal")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.fitGreen)
+                }
+
+                Text(descriptionText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.fitTextSecondary)
+                    .lineLimit(1)
             }
         }
+        .padding(16)
         .background(Color.fitCard)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private var emptyState: some View {
-        Button(action: onAdd) {
-            HStack(spacing: 12) {
-                Image(systemName: mealType.icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.fitGreen)
-                    .frame(width: 42, height: 42)
-                    .background(Color.fitGreenSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                Text("Thêm \(mealType.rawValue.lowercased())")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.fitTextTertiary)
-
-                Spacer()
-
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(Color.fitGreen.opacity(0.4))
-            }
-            .padding(16)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var filledState: some View {
-        VStack(spacing: 0) {
+        .contextMenu {
             ForEach(entries) { entry in
-                HStack(spacing: 12) {
-                    Image(systemName: mealType.icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.fitGreen)
-                        .frame(width: 42, height: 42)
-                        .background(Color.fitGreenSoft)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(entry.name)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.fitTextPrimary)
-                            Spacer()
-                            Text("\(entry.calories) kcal")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.fitGreen)
-                        }
-
-                        if !entry.description.isEmpty {
-                            Text(entry.description)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color.fitTextSecondary)
-                                .lineLimit(1)
-                        }
-
-                        HStack(spacing: 8) {
-                            macroTag("💪", value: "\(Int(entry.protein))g", color: Color.fitIndigo)
-                            macroTag("🍚", value: "\(Int(entry.carbs))g", color: Color.fitOrange)
-                            macroTag("🥑", value: "\(Int(entry.fat))g", color: Color.fitCoral)
-                        }
-                    }
-                }
-                .padding(16)
-                .contextMenu {
-                    Button(role: .destructive) {
-                        onDelete(entry)
-                    } label: {
-                        Label("Xoá", systemImage: "trash")
-                    }
-                }
-
-                if entry.id != entries.last?.id {
-                    Divider().padding(.leading, 70)
+                Button(role: .destructive) {
+                    onDelete(entry)
+                } label: {
+                    Label("Xoá \(entry.name)", systemImage: "trash")
                 }
             }
-
-            Button(action: onAdd) {
-                HStack {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("Thêm vào \(mealType.rawValue.lowercased())")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(Color.fitGreen)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.fitGreenSoft)
-            }
-            .buttonStyle(.plain)
         }
-    }
-
-    private func macroTag(_ emoji: String, value: String, color: Color) -> some View {
-        Text("\(emoji) \(value)")
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(color)
     }
 }
