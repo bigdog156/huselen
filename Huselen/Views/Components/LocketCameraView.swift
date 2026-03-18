@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import PhotosUI
 
 // MARK: - Camera Manager
 
@@ -19,7 +20,6 @@ final class LocketCameraManager: NSObject {
     func setupSession() {
         guard !isSessionRunning else { return }
 
-        // Check camera permission first
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             configureAndStart()
@@ -152,95 +152,326 @@ struct CameraPreviewView: UIViewRepresentable {
     }
 }
 
+// MARK: - Square Crop View
+
+struct SquareCropView: View {
+    let image: UIImage
+    let onCrop: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private let previewCornerRadius: CGFloat = 44
+
+    var body: some View {
+        GeometryReader { geo in
+            let cropSize = geo.size.width
+
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    // Top bar
+                    HStack {
+                        Button { onCancel() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(Circle().fill(.black.opacity(0.35)))
+                        }
+                        Spacer()
+                        Text("Di chuyển & thu phóng")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.7))
+                        Spacer()
+                        Color.clear.frame(width: 42, height: 42)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, geo.safeAreaInsets.top + 8)
+                    .padding(.bottom, 12)
+
+                    // Crop area
+                    ZStack {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .scaleEffect(scale)
+                            .offset(offset)
+                            .frame(width: cropSize, height: cropSize)
+                            .clipped()
+                            .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
+                            .gesture(
+                                SimultaneousGesture(
+                                    MagnifyGesture()
+                                        .onChanged { value in
+                                            let newScale = lastScale * value.magnification
+                                            scale = max(1.0, min(newScale, 5.0))
+                                        }
+                                        .onEnded { _ in
+                                            lastScale = scale
+                                            clampOffset(cropSize: cropSize)
+                                        },
+                                    DragGesture()
+                                        .onChanged { value in
+                                            offset = CGSize(
+                                                width: lastOffset.width + value.translation.width,
+                                                height: lastOffset.height + value.translation.height
+                                            )
+                                        }
+                                        .onEnded { _ in
+                                            clampOffset(cropSize: cropSize)
+                                            lastOffset = offset
+                                        }
+                                )
+                            )
+                    }
+                    .frame(width: cropSize, height: cropSize)
+
+                    Spacer()
+
+                    // Bottom controls
+                    HStack(spacing: 50) {
+                        Button { onCancel() } label: {
+                            VStack(spacing: 6) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 56, height: 56)
+                                    .background(Circle().fill(.white.opacity(0.12)))
+                                Text("Huỷ")
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.6))
+                            }
+                        }
+
+                        Button {
+                            let cropped = performCrop(cropSize: cropSize)
+                            onCrop(cropped)
+                        } label: {
+                            VStack(spacing: 6) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 26, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 64, height: 64)
+                                    .background(
+                                        Circle()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [
+                                                        Color(red: 1.0, green: 0.82, blue: 0.2),
+                                                        Color(red: 0.95, green: 0.7, blue: 0.1)
+                                                    ],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                )
+                                            )
+                                            .shadow(color: Color(red: 1.0, green: 0.82, blue: 0.2).opacity(0.5), radius: 12, y: 4)
+                                    )
+                                Text("Xong")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.2))
+                            }
+                        }
+
+                        Color.clear.frame(width: 56, height: 76)
+                    }
+
+                    Spacer().frame(height: geo.safeAreaInsets.bottom + 16)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .statusBarHidden()
+    }
+
+    private func clampOffset(cropSize: CGFloat) {
+        let imgSize = image.size
+        let aspect = imgSize.width / imgSize.height
+
+        // Size of image as displayed (scaledToFill in square)
+        let displayW: CGFloat
+        let displayH: CGFloat
+        if aspect > 1 {
+            displayH = cropSize * scale
+            displayW = displayH * aspect
+        } else {
+            displayW = cropSize * scale
+            displayH = displayW / aspect
+        }
+
+        let maxOffsetX = max(0, (displayW - cropSize) / 2)
+        let maxOffsetY = max(0, (displayH - cropSize) / 2)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            offset.width = min(maxOffsetX, max(-maxOffsetX, offset.width))
+            offset.height = min(maxOffsetY, max(-maxOffsetY, offset.height))
+        }
+    }
+
+    private func performCrop(cropSize: CGFloat) -> UIImage {
+        let imgSize = image.size
+        let aspect = imgSize.width / imgSize.height
+
+        // How the image is displayed (scaledToFill in the square)
+        let displayW: CGFloat
+        let displayH: CGFloat
+        if aspect > 1 {
+            displayH = cropSize * scale
+            displayW = displayH * aspect
+        } else {
+            displayW = cropSize * scale
+            displayH = displayW / aspect
+        }
+
+        // Ratio from display to actual image pixels
+        let ratioX = imgSize.width / displayW
+        let ratioY = imgSize.height / displayH
+
+        // The visible crop window center in display coords
+        let centerX = displayW / 2 - offset.width
+        let centerY = displayH / 2 - offset.height
+
+        // Convert to image pixel coords
+        let cropX = (centerX - cropSize / 2) * ratioX
+        let cropY = (centerY - cropSize / 2) * ratioY
+        let cropW = cropSize * ratioX
+        let cropH = cropSize * ratioY
+
+        let cropRect = CGRect(x: cropX, y: cropY, width: cropW, height: cropH)
+            .intersection(CGRect(origin: .zero, size: imgSize))
+
+        guard !cropRect.isEmpty,
+              let cgImage = image.cgImage?.cropping(to: cropRect) else {
+            return image
+        }
+
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+    }
+}
+
 // MARK: - Locket Camera View
 
 struct LocketCameraView: View {
     @Environment(\.dismiss) private var dismiss
+    let title: String
     let onCapture: (Data) -> Void
+
+    init(title: String = "Check-in", onCapture: @escaping (Data) -> Void) {
+        self.title = title
+        self.onCapture = onCapture
+    }
 
     @State private var camera = LocketCameraManager()
     @State private var shutterScale: CGFloat = 1.0
     @State private var showFlash = false
+    @State private var flipRotation: Double = 0
 
-    private var cameraSize: CGFloat {
-        UIScreen.main.bounds.width - 32
-    }
+    // Photo picker
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var pickedImage: UIImage?
+    @State private var showCropView = false
+
+    private let previewCornerRadius: CGFloat = 44
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            // Main camera UI
+            cameraBody
 
-            VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-
-                Spacer().frame(height: 16)
-
-                // Camera preview or captured photo
-                ZStack {
-                    if camera.permissionDenied {
-                        VStack(spacing: 16) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.white.opacity(0.4))
-                            Text("Cần quyền truy cập Camera")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.8))
-                            Text("Vào Cài đặt → Huselen → Bật Camera")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.white.opacity(0.5))
-                            Button {
-                                if let url = URL(string: UIApplication.openSettingsURLString) {
-                                    UIApplication.shared.open(url)
-                                }
-                            } label: {
-                                Text("Mở Cài đặt")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.black)
-                                    .padding(.horizontal, 24)
-                                    .padding(.vertical, 10)
-                                    .background(Capsule().fill(.white))
-                            }
-                        }
-                        .frame(width: cameraSize, height: cameraSize)
-                        .background(
-                            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                                .fill(Color.white.opacity(0.1))
-                        )
-                    } else if let image = camera.capturedImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: cameraSize, height: cameraSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
-                            .transition(.scale.combined(with: .opacity))
-                    } else {
-                        CameraPreviewView(session: camera.session)
-                            .frame(width: cameraSize, height: cameraSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
-
-                        if showFlash {
-                            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                                .fill(.white)
-                                .frame(width: cameraSize, height: cameraSize)
-                                .transition(.opacity)
-                        }
+            // Crop overlay for gallery picks
+            if showCropView, let image = pickedImage {
+                SquareCropView(
+                    image: image,
+                    onCrop: { cropped in
+                        camera.capturedImage = cropped
+                        showCropView = false
+                        pickedImage = nil
+                    },
+                    onCancel: {
+                        showCropView = false
+                        pickedImage = nil
                     }
-                }
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: camera.capturedImage != nil)
-
-                Spacer().frame(height: 24)
-
-                if camera.capturedImage != nil {
-                    capturedControls
-                } else {
-                    cameraControls
-                }
-
-                Spacer()
+                )
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: showCropView)
+        .onChange(of: selectedPhoto) { _, newValue in
+            guard let newValue else { return }
+            Task {
+                if let data = try? await newValue.loadTransferable(type: Data.self),
+                   let uiImage = UIImage(data: data) {
+                    pickedImage = uiImage
+                    showCropView = true
+                }
+                selectedPhoto = nil
+            }
+        }
+    }
+
+    // MARK: - Camera Body
+
+    private var cameraBody: some View {
+        GeometryReader { geo in
+            let screenWidth = geo.size.width
+            let previewSize = screenWidth
+
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    topBar
+                        .padding(.horizontal, 16)
+                        .padding(.top, geo.safeAreaInsets.top + 8)
+                        .padding(.bottom, 12)
+
+                    // Camera preview — 1:1 square, edge-to-edge width
+                    ZStack {
+                        if camera.permissionDenied {
+                            permissionDeniedView(size: previewSize)
+                        } else if let image = camera.capturedImage {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: previewSize, height: previewSize)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
+                                .transition(.scale.combined(with: .opacity))
+                        } else {
+                            CameraPreviewView(session: camera.session)
+                                .frame(width: previewSize, height: previewSize)
+                                .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
+
+                            overlayControls(size: previewSize)
+
+                            if showFlash {
+                                RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
+                                    .fill(.white)
+                                    .frame(width: previewSize, height: previewSize)
+                                    .transition(.opacity)
+                            }
+                        }
+                    }
+                    .frame(width: previewSize, height: previewSize)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: camera.capturedImage != nil)
+
+                    Spacer()
+
+                    if camera.capturedImage != nil {
+                        capturedControls
+                    } else {
+                        cameraControls
+                    }
+
+                    Spacer().frame(height: geo.safeAreaInsets.bottom + 16)
+                }
+            }
+        }
+        .ignoresSafeArea()
         .onAppear { camera.setupSession() }
         .onDisappear { camera.stopSession() }
         .statusBarHidden()
@@ -249,51 +480,89 @@ struct LocketCameraView: View {
     // MARK: - Top Bar
 
     private var topBar: some View {
-        HStack {
-            Button {
-                dismiss()
-            } label: {
+        HStack(spacing: 12) {
+            Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(.white.opacity(0.15)))
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(.black.opacity(0.35)))
             }
 
             Spacer()
 
-            Text("Check-in")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+            HStack(spacing: 6) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(.black.opacity(0.35)))
 
             Spacer()
 
-            if camera.capturedImage == nil {
+            Color.clear.frame(width: 42, height: 42)
+        }
+    }
+
+    // MARK: - Overlay Controls
+
+    private func overlayControls(size: CGFloat) -> some View {
+        VStack {
+            Spacer()
+
+            HStack {
                 Button {
-                    camera.flashEnabled.toggle()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        camera.flashEnabled.toggle()
+                    }
                 } label: {
                     Image(systemName: camera.flashEnabled ? "bolt.fill" : "bolt.slash.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(camera.flashEnabled ? Theme.Colors.warmYellow : .white)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(.white.opacity(0.15)))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(camera.flashEnabled ? Color(red: 1.0, green: 0.82, blue: 0.2) : .white)
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(.black.opacity(0.35)))
                 }
-            } else {
-                Color.clear.frame(width: 40, height: 40)
+
+                Spacer()
+
+                Text("1×")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(.black.opacity(0.35)))
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
+        .frame(width: size, height: size)
     }
 
     // MARK: - Camera Controls
 
     private var cameraControls: some View {
-        HStack(spacing: 40) {
-            Color.clear.frame(width: 50, height: 50)
+        HStack(alignment: .center) {
+            // Photo library picker
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 46, height: 46)
+                    .overlay(
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                    )
+            }
+
+            Spacer()
 
             // Shutter
             Button {
                 withAnimation(.easeIn(duration: 0.1)) {
-                    shutterScale = 0.85
+                    shutterScale = 0.88
                     showFlash = true
                 }
                 camera.capturePhoto()
@@ -308,28 +577,44 @@ struct LocketCameraView: View {
             } label: {
                 ZStack {
                     Circle()
-                        .fill(.white)
-                        .frame(width: 76, height: 76)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.82, blue: 0.2),
+                                    Color(red: 0.95, green: 0.7, blue: 0.1)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 4
+                        )
+                        .frame(width: 82, height: 82)
+
                     Circle()
-                        .stroke(.white.opacity(0.4), lineWidth: 4)
-                        .frame(width: 88, height: 88)
+                        .fill(.white)
+                        .frame(width: 68, height: 68)
                 }
                 .scaleEffect(shutterScale)
             }
 
-            // Flip
+            Spacer()
+
+            // Flip camera
             Button {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
                     camera.flipCamera()
+                    flipRotation += 180
                 }
             } label: {
-                Image(systemName: "camera.rotate.fill")
+                Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 50, height: 50)
-                    .background(Circle().fill(.white.opacity(0.15)))
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(.white.opacity(0.12)))
+                    .rotationEffect(.degrees(flipRotation))
             }
         }
+        .padding(.horizontal, 40)
     }
 
     // MARK: - Captured Controls
@@ -346,10 +631,10 @@ struct LocketCameraView: View {
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 56, height: 56)
-                        .background(Circle().fill(.white.opacity(0.15)))
+                        .background(Circle().fill(.white.opacity(0.12)))
                     Text("Chụp lại")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
 
@@ -365,16 +650,58 @@ struct LocketCameraView: View {
                         .frame(width: 64, height: 64)
                         .background(
                             Circle()
-                                .fill(Theme.Colors.mintGreen.gradient)
-                                .shadow(color: Theme.Colors.mintGreen.opacity(0.5), radius: 12, y: 4)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 1.0, green: 0.82, blue: 0.2),
+                                            Color(red: 0.95, green: 0.7, blue: 0.1)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .shadow(color: Color(red: 1.0, green: 0.82, blue: 0.2).opacity(0.5), radius: 12, y: 4)
                         )
                     Text("Gửi")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.Colors.mintGreen)
+                        .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.2))
                 }
             }
 
             Color.clear.frame(width: 56, height: 76)
         }
+    }
+
+    // MARK: - Permission Denied
+
+    private func permissionDeniedView(size: CGFloat) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(.white.opacity(0.4))
+            Text("Cần quyền truy cập Camera")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            Text("Vào Cài đặt → Huselen → Bật Camera")
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.5))
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                Text("Mở Cài đặt")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(.white))
+            }
+        }
+        .frame(width: size, height: size)
+        .background(
+            RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
+                .fill(Color.white.opacity(0.1))
+        )
     }
 }

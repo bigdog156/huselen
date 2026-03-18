@@ -3,12 +3,14 @@ import SwiftUI
 
 struct ClientCheckInView: View {
     @Environment(DataSyncManager.self) private var syncManager
+    @Environment(AuthManager.self) private var authManager
 
     @State private var showCamera = false
     @State private var isProcessing = false
     @State private var showSuccess = false
     @State private var checkedInSession: TrainingGymSession?
     @State private var pendingSession: TrainingGymSession?
+    @State private var showingProfile = false
 
     // MARK: - Session helpers
 
@@ -148,16 +150,31 @@ struct ClientCheckInView: View {
     }
 
     private var avatarCircle: some View {
-        let name = syncManager.sessions.first?.client?.name ?? ""
+        let name = authManager.userProfile?.fullName ?? syncManager.sessions.first?.client?.name ?? ""
         let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
         let display = initials.isEmpty ? "NH" : initials.uppercased()
-        return ZStack {
-            Circle()
-                .fill(Color.fitGreen)
-                .frame(width: 44, height: 44)
-            Text(display)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
+        return Button { showingProfile = true } label: {
+            if let urlStr = authManager.userProfile?.avatarUrl, !urlStr.isEmpty, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(Circle())
+                    } else {
+                        initialsCircle(display)
+                    }
+                }
+            } else {
+                initialsCircle(display)
+            }
+        }
+        .sheet(isPresented: $showingProfile) { ProfileView() }
+    }
+
+    private func initialsCircle(_ text: String) -> some View {
+        ZStack {
+            Circle().fill(Color.fitGreen).frame(width: 44, height: 44)
+            Text(text).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
         }
     }
 

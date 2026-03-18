@@ -4,14 +4,12 @@ import Charts
 // MARK: - Chart Enums
 
 enum BodyStatMetric: String, CaseIterable, Identifiable {
-    case weight, bodyFat, muscleMass, waist, chest, hip
+    case weight, waist, chest, hip
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
         case .weight:     return "Cân nặng"
-        case .bodyFat:    return "Tỷ lệ mỡ"
-        case .muscleMass: return "Cơ bắp"
         case .waist:      return "Eo"
         case .chest:      return "Vòng 1"
         case .hip:        return "Hông"
@@ -19,28 +17,23 @@ enum BodyStatMetric: String, CaseIterable, Identifiable {
     }
     var unit: String {
         switch self {
-        case .weight, .muscleMass: return "kg"
-        case .bodyFat:             return "%"
-        default:                   return "cm"
+        case .weight: return "kg"
+        default:      return "cm"
         }
     }
     var color: Color {
         switch self {
         case .weight:     return Color.fitGreen
-        case .bodyFat:    return Color.fitOrange
-        case .muscleMass: return Color.fitIndigo
         case .waist:      return Color.fitCoral
         case .chest:      return Color.fitLavender
         case .hip:        return Color.fitBlue
         }
     }
-    var lowerIsBetter: Bool { self == .bodyFat || self == .waist || self == .hip }
+    var lowerIsBetter: Bool { self == .waist || self == .hip }
 
     func value(from log: BodyStatLog) -> Double? {
         switch self {
         case .weight:     return log.weight
-        case .bodyFat:    return log.bodyFat
-        case .muscleMass: return log.muscleMass
         case .waist:      return log.waist
         case .chest:      return log.chest
         case .hip:        return log.hip
@@ -74,9 +67,12 @@ private extension View {
 
 struct MyBodyStatsView: View {
     @Environment(DataSyncManager.self) private var syncManager
+    @Environment(AuthManager.self) private var authManager
     @State private var showUpdateSheet = false
     @State private var selectedMetric: BodyStatMetric = .weight
     @State private var selectedRange: StatRange = .month
+    @State private var showingProfile = false
+    @State private var showProgressPhotos = false
 
     private var myProfile: Client? { syncManager.clients.first }
 
@@ -141,6 +137,9 @@ struct MyBodyStatsView: View {
                 bodyStatsSection
                     .padding(.horizontal, 24)
 
+                progressPhotosSection
+                    .padding(.horizontal, 24)
+
                 trainingStatsSection
                     .padding(.horizontal, 24)
 
@@ -155,10 +154,17 @@ struct MyBodyStatsView: View {
         .refreshable {
             await syncManager.refresh()
             await syncManager.fetchBodyStatLogs()
+            await syncManager.fetchProgressPhotos()
         }
-        .task { await syncManager.fetchBodyStatLogs() }
+        .task {
+            await syncManager.fetchBodyStatLogs()
+            await syncManager.fetchProgressPhotos()
+        }
         .sheet(isPresented: $showUpdateSheet) {
             UpdateBodyStatsSheet(client: myProfile)
+        }
+        .sheet(isPresented: $showProgressPhotos) {
+            ProgressPhotosView()
         }
     }
 
@@ -180,12 +186,31 @@ struct MyBodyStatsView: View {
     }
 
     private var avatarCircle: some View {
-        let name = myProfile?.name ?? ""
+        let name = authManager.userProfile?.fullName ?? myProfile?.name ?? ""
         let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
         let display = initials.isEmpty ? "NH" : initials.uppercased()
-        return ZStack {
+        return Button { showingProfile = true } label: {
+            if let urlStr = authManager.userProfile?.avatarUrl, !urlStr.isEmpty, let url = URL(string: urlStr) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(Circle())
+                    } else {
+                        initialsCircle(display)
+                    }
+                }
+            } else {
+                initialsCircle(display)
+            }
+        }
+        .sheet(isPresented: $showingProfile) { ProfileView() }
+    }
+
+    private func initialsCircle(_ text: String) -> some View {
+        ZStack {
             Circle().fill(Color.fitGreen).frame(width: 44, height: 44)
-            Text(display).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+            Text(text).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
         }
     }
 
@@ -426,22 +451,6 @@ struct MyBodyStatsView: View {
                     title: "Cân nặng",
                     value: myProfile.flatMap { $0.weight > 0 ? String(format: "%.1f kg", $0.weight) : nil }
                 )
-                Divider().padding(.leading, 54)
-                statRow(
-                    icon: "flame.fill",
-                    iconColor: Color.fitOrange,
-                    iconBg: Color(red: 1.0, green: 0.969, blue: 0.929),
-                    title: "Tỷ lệ mỡ",
-                    value: myProfile.flatMap { $0.bodyFat > 0 ? String(format: "%.1f%%", $0.bodyFat) : nil }
-                )
-                Divider().padding(.leading, 54)
-                statRow(
-                    icon: "figure.strengthtraining.traditional",
-                    iconColor: Color.fitIndigo,
-                    iconBg: Color(red: 0.937, green: 0.937, blue: 0.988),
-                    title: "Khối lượng cơ",
-                    value: myProfile.flatMap { $0.muscleMass > 0 ? String(format: "%.1f kg", $0.muscleMass) : nil }
-                )
             }
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.fitCard)
@@ -540,6 +549,83 @@ struct MyBodyStatsView: View {
         .padding(.vertical, 14)
         .contentShape(Rectangle())
         .onTapGesture { showUpdateSheet = true }
+    }
+
+    // MARK: - Progress Photos Section
+
+    private var progressPhotosSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("ẢNH TIẾN TRÌNH")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.fitTextTertiary)
+                    .tracking(1)
+                Spacer()
+                Button {
+                    showProgressPhotos = true
+                } label: {
+                    Text("Xem tất cả →")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.fitGreen)
+                }
+            }
+
+            if syncManager.progressPhotos.isEmpty {
+                Button { showProgressPhotos = true } label: {
+                    VStack(spacing: 10) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 30))
+                            .foregroundStyle(Color.fitTextTertiary.opacity(0.5))
+                        Text("Chụp ảnh tiến trình đầu tiên!")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.fitCard)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color.fitTextTertiary.opacity(0.15), style: StrokeStyle(lineWidth: 1, dash: [6]))
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button { showProgressPhotos = true } label: {
+                    HStack(spacing: 8) {
+                        ForEach(Array(syncManager.progressPhotos.prefix(4))) { photo in
+                            AsyncImage(url: URL(string: photo.photoUrl)) { phase in
+                                if case .success(let img) = phase {
+                                    img.resizable().scaledToFill()
+                                } else {
+                                    Color(.systemGray5)
+                                }
+                            }
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+
+                        if syncManager.progressPhotos.count > 4 {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(.systemGray5))
+                                    .frame(width: 72, height: 72)
+                                Text("+\(syncManager.progressPhotos.count - 4)")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(Color.fitTextSecondary)
+                            }
+                        }
+
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.fitCard))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Training Stats
@@ -643,8 +729,6 @@ struct UpdateBodyStatsSheet: View {
 
     @State private var height     = ""
     @State private var weight     = ""
-    @State private var bodyFat    = ""
-    @State private var muscleMass = ""
     @State private var neck       = ""
     @State private var shoulder   = ""
     @State private var arm        = ""
@@ -662,8 +746,6 @@ struct UpdateBodyStatsSheet: View {
                 Section("Chỉ số cơ thể") {
                     statsField(label: "Chiều cao", icon: "ruler.fill", unit: "cm", text: $height)
                     statsField(label: "Cân nặng", icon: "scalemass.fill", unit: "kg", text: $weight)
-                    statsField(label: "Tỷ lệ mỡ", icon: "flame.fill", unit: "%", text: $bodyFat)
-                    statsField(label: "Khối lượng cơ", icon: "figure.strengthtraining.traditional", unit: "kg", text: $muscleMass)
                 }
 
                 Section("Số đo cơ thể (cm)") {
@@ -709,8 +791,6 @@ struct UpdateBodyStatsSheet: View {
         guard let c = client else { return }
         height     = c.height > 0     ? String(format: "%.1f", c.height)     : ""
         weight     = c.weight > 0     ? String(format: "%.1f", c.weight)     : ""
-        bodyFat    = c.bodyFat > 0    ? String(format: "%.1f", c.bodyFat)    : ""
-        muscleMass = c.muscleMass > 0 ? String(format: "%.1f", c.muscleMass) : ""
         neck       = c.neck > 0       ? String(format: "%.1f", c.neck)       : ""
         shoulder   = c.shoulder > 0   ? String(format: "%.1f", c.shoulder)   : ""
         arm        = c.arm > 0        ? String(format: "%.1f", c.arm)        : ""
@@ -727,8 +807,6 @@ struct UpdateBodyStatsSheet: View {
         isSaving = true
         if let v = Double(height)     { c.height     = v }
         if let v = Double(weight)     { c.weight     = v }
-        if let v = Double(bodyFat)    { c.bodyFat    = v }
-        if let v = Double(muscleMass) { c.muscleMass = v }
         if let v = Double(neck)       { c.neck       = v }
         if let v = Double(shoulder)   { c.shoulder   = v }
         if let v = Double(arm)        { c.arm        = v }

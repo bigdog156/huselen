@@ -245,6 +245,7 @@ final class DataSyncManager {
     var branches: [GymBranch] = []
     var selectedBranchId: UUID?
     var bodyStatLogs: [BodyStatLog] = []
+    var progressPhotos: [ProgressPhoto] = []
 
     func refresh() async {
         await fetchAll(role: lastRole)
@@ -486,6 +487,63 @@ final class DataSyncManager {
             bodyStatLogs.sort { $0.loggedAt < $1.loggedAt }
         } catch {
             // Non-critical
+        }
+    }
+
+    // MARK: - Progress Photos
+
+    func fetchProgressPhotos() async {
+        do {
+            let userId = try await ownerId()
+            let photos: [ProgressPhoto] = try await supabase
+                .from("progress_photos")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("taken_at", ascending: false)
+                .execute()
+                .value
+            progressPhotos = photos
+        } catch {
+            // Non-critical — leave empty
+        }
+    }
+
+    @discardableResult
+    func saveProgressPhoto(photoData: Data, note: String = "", category: ProgressPhoto.PhotoCategory = .front) async -> Bool {
+        do {
+            let userId = try await ownerId()
+            let path = "progress/\(userId.uuidString)/\(UUID().uuidString).jpg"
+            let photoURL = try await uploadAttendancePhoto(photoData, path: path)
+
+            let photo = ProgressPhoto(
+                userId: userId.uuidString,
+                photoUrl: photoURL,
+                note: note,
+                category: category
+            )
+            try await supabase
+                .from("progress_photos")
+                .insert(photo)
+                .execute()
+
+            progressPhotos.insert(photo, at: 0)
+            return true
+        } catch {
+            errorMessage = "Lỗi lưu ảnh tiến trình: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func deleteProgressPhoto(_ photo: ProgressPhoto) async {
+        do {
+            try await supabase
+                .from("progress_photos")
+                .delete()
+                .eq("id", value: photo.id)
+                .execute()
+            progressPhotos.removeAll { $0.id == photo.id }
+        } catch {
+            errorMessage = "Lỗi xoá ảnh: \(error.localizedDescription)"
         }
     }
 
