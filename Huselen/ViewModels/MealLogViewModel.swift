@@ -46,7 +46,10 @@ class MealLogViewModel: ObservableObject {
     @Published var mealDescription: String?
     @Published var healthNote: String?
     @Published var userMealNote: String = ""  // User's custom note about the meal
-    
+
+    // Calendar month photo data: date string "yyyy-MM-dd" → list of photo URLs for that day
+    @Published var monthPhotoData: [String: [String]] = [:]
+
     private let openAIService = OpenAIService.shared
     
     // MARK: - Computed Properties
@@ -203,6 +206,42 @@ class MealLogViewModel: ObservableObject {
         isLoading = false
     }
     
+    // MARK: - Load Month Photo Data (for calendar thumbnails)
+    func loadMonthPhotos(userId: String) async {
+        let cal = Calendar.current
+        guard let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: displayedMonth)),
+              let range = cal.range(of: .day, in: .month, for: displayedMonth),
+              let endOfMonth = cal.date(byAdding: .day, value: range.count - 1, to: startOfMonth) else { return }
+
+        let fmt = DateFormatters.localDateOnly
+        let startStr = fmt.string(from: startOfMonth)
+        let endStr = fmt.string(from: endOfMonth)
+
+        do {
+            // Fetch only id, logged_date, photo_url, meal_type for efficiency
+            let logs: [UserMealLog] = try await supabase
+                .from("user_meal_logs")
+                .select()
+                .eq("user_id", value: userId)
+                .gte("logged_date", value: startStr)
+                .lte("logged_date", value: endStr)
+                .not("photo_url", operator: .is, value: "null")
+                .execute()
+                .value
+
+            var result: [String: [String]] = [:]
+            for log in logs {
+                let dateKey = fmt.string(from: log.loggedDate)
+                if let url = log.photoUrl, !url.isEmpty {
+                    result[dateKey, default: []].append(url)
+                }
+            }
+            monthPhotoData = result
+        } catch {
+            // Non-critical, calendar will just show without photos
+        }
+    }
+
     // MARK: - Analyze Meal Image with AI
     func analyzeMealImage(_ image: UIImage, userContext: String? = nil) async -> MealAnalysisResult? {
         isAnalyzing = true

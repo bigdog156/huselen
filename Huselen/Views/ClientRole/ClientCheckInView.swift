@@ -10,8 +10,6 @@ struct ClientCheckInView: View {
     @State private var showSuccess = false
     @State private var checkedInSession: TrainingGymSession?
     @State private var pendingSession: TrainingGymSession?
-    @State private var showingProfile = false
-
     // MARK: - Session helpers
 
     private var todaySessions: [TrainingGymSession] {
@@ -34,36 +32,15 @@ struct ClientCheckInView: View {
     // MARK: - Stats
 
     private var sessionsThisMonth: Int {
-        let cal = Calendar.current
-        return syncManager.sessions.filter {
-            cal.isDate($0.scheduledDate, equalTo: Date(), toGranularity: .month) &&
-            ($0.isCompleted || $0.clientCheckInPhotoURL != nil)
-        }.count
+        StreakCalculator.sessionsThisMonth(from: syncManager.sessions)
     }
 
     private var streakDays: Int {
-        let cal = Calendar.current
-        var streak = 0
-        var checkDate = Date()
-        for _ in 0..<60 {
-            let hit = syncManager.sessions.contains {
-                cal.isDate($0.scheduledDate, inSameDayAs: checkDate) &&
-                ($0.isCompleted || $0.clientCheckInPhotoURL != nil)
-            }
-            guard hit else { break }
-            streak += 1
-            checkDate = cal.date(byAdding: .day, value: -1, to: checkDate) ?? checkDate
-        }
-        return streak
+        StreakCalculator.trainingStreak(from: syncManager.sessions)
     }
 
     private var sessionsThisWeek: Int {
-        let cal = Calendar.current
-        guard let weekInterval = cal.dateInterval(of: .weekOfYear, for: Date()) else { return 0 }
-        return syncManager.sessions.filter {
-            weekInterval.contains($0.scheduledDate) &&
-            ($0.clientCheckInPhotoURL != nil || $0.isCompleted)
-        }.count
+        StreakCalculator.sessionsThisWeek(from: syncManager.sessions)
     }
 
     private var recentCheckIns: [TrainingGymSession] {
@@ -128,18 +105,7 @@ struct ClientCheckInView: View {
     // MARK: - Header
 
     private var headerView: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(greetingText)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.fitTextSecondary)
-                Text("Check-in")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.fitTextPrimary)
-            }
-            Spacer()
-            avatarCircle
-        }
+        ClientHeaderView(subtitle: greetingText, title: "Check-in")
     }
 
     private var greetingText: String {
@@ -147,35 +113,6 @@ struct ClientCheckInView: View {
         if hour < 12 { return "Chào buổi sáng!" }
         if hour < 18 { return "Chào buổi chiều!" }
         return "Chào buổi tối!"
-    }
-
-    private var avatarCircle: some View {
-        let name = authManager.userProfile?.fullName ?? syncManager.sessions.first?.client?.name ?? ""
-        let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
-        let display = initials.isEmpty ? "NH" : initials.uppercased()
-        return Button { showingProfile = true } label: {
-            if let urlStr = authManager.userProfile?.avatarUrl, !urlStr.isEmpty, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipShape(Circle())
-                    } else {
-                        initialsCircle(display)
-                    }
-                }
-            } else {
-                initialsCircle(display)
-            }
-        }
-        .sheet(isPresented: $showingProfile) { ProfileView() }
-    }
-
-    private func initialsCircle(_ text: String) -> some View {
-        ZStack {
-            Circle().fill(Color.fitGreen).frame(width: 44, height: 44)
-            Text(text).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-        }
     }
 
     // MARK: - Hero Card

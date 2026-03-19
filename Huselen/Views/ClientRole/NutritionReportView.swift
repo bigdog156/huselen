@@ -5,14 +5,14 @@ struct NutritionReportView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var weekOffset = 0
+    @State private var weekLogs: [UserMealLog] = []
+    @State private var isLoading = false
 
     private var myProfile: Client? { syncManager.clients.first }
     private var calorieGoal: Int { myProfile?.calorieGoal ?? 2200 }
     private var proteinGoal: Double { myProfile?.proteinGoal ?? 150 }
     private var carbsGoal: Double { myProfile?.carbsGoal ?? 280 }
     private var fatGoal: Double { myProfile?.fatGoal ?? 70 }
-
-    private var entries: [MealEntry] { syncManager.mealEntries }
 
     private var weekDates: [Date] {
         let cal = Calendar.current
@@ -28,45 +28,44 @@ struct NutritionReportView: View {
         return "\(df.string(from: first)) – \(df.string(from: last)) Tháng \(Calendar.current.component(.month, from: first)), \(Calendar.current.component(.year, from: first))"
     }
 
-    private func entriesFor(_ date: Date) -> [MealEntry] {
+    private func logsFor(_ date: Date) -> [UserMealLog] {
         let cal = Calendar.current
-        return entries.filter { cal.isDate($0.date, inSameDayAs: date) }
+        return weekLogs.filter { cal.isDate($0.loggedDate, inSameDayAs: date) }
     }
 
     private func caloriesFor(_ date: Date) -> Int {
-        entriesFor(date).reduce(0) { $0 + $1.calories }
-    }
-
-    private var weekEntries: [MealEntry] {
-        let cal = Calendar.current
-        return entries.filter { entry in
-            weekDates.contains { cal.isDate(entry.date, inSameDayAs: $0) }
-        }
+        logsFor(date).compactMap(\.calories).reduce(0, +)
     }
 
     private var avgCalories: Int {
         let daysWithData = weekDates.filter { caloriesFor($0) > 0 }.count
         guard daysWithData > 0 else { return 0 }
-        return weekEntries.reduce(0) { $0 + $1.calories } / daysWithData
+        let total = weekLogs.compactMap(\.calories).reduce(0, +)
+        return total / daysWithData
     }
 
     private var daysOnGoal: Int {
         weekDates.filter { caloriesFor($0) >= calorieGoal - 200 && caloriesFor($0) > 0 }.count
     }
 
-    private var totalProtein: Double { weekEntries.reduce(0) { $0 + $1.protein } }
-    private var totalCarbs: Double { weekEntries.reduce(0) { $0 + $1.carbs } }
-    private var totalFat: Double { weekEntries.reduce(0) { $0 + $1.fat } }
+    private var totalProtein: Double { weekLogs.compactMap(\.proteinG).reduce(0, +) }
+    private var totalCarbs: Double { weekLogs.compactMap(\.carbsG).reduce(0, +) }
+    private var totalFat: Double { weekLogs.compactMap(\.fatG).reduce(0, +) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     weekSelectorView
-                    summaryCardView
-                    barChartView
-                    macroBreakdownView
-                    streakBannerView
+                    if isLoading {
+                        ProgressView()
+                            .padding(.vertical, 40)
+                    } else {
+                        summaryCardView
+                        barChartView
+                        macroBreakdownView
+                        streakBannerView
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
@@ -90,7 +89,17 @@ struct NutritionReportView: View {
                     }
                 }
             }
+            .task { await loadWeekData() }
+            .onChange(of: weekOffset) { _, _ in
+                Task { await loadWeekData() }
+            }
         }
+    }
+
+    private func loadWeekData() async {
+        isLoading = true
+        weekLogs = await syncManager.fetchWeeklyMealLogs(for: weekDates)
+        isLoading = false
     }
 
     // MARK: - Week Selector

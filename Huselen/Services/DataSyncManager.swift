@@ -490,6 +490,30 @@ final class DataSyncManager {
         }
     }
 
+    // MARK: - Weekly Meal Logs (from user_meal_logs)
+
+    func fetchWeeklyMealLogs(for dates: [Date]) async -> [UserMealLog] {
+        guard let first = dates.first, let last = dates.last else { return [] }
+        do {
+            let userId = try await ownerId()
+            let fmt = DateFormatters.localDateOnly
+            let startStr = fmt.string(from: first)
+            let endStr = fmt.string(from: last)
+
+            let logs: [UserMealLog] = try await supabase
+                .from("user_meal_logs")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .gte("logged_date", value: startStr)
+                .lte("logged_date", value: endStr)
+                .execute()
+                .value
+            return logs
+        } catch {
+            return []
+        }
+    }
+
     // MARK: - Progress Photos
 
     func fetchProgressPhotos() async {

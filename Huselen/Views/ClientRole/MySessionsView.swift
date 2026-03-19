@@ -3,12 +3,10 @@ import SwiftUI
 
 struct MySessionsView: View {
     @Environment(DataSyncManager.self) private var syncManager
-    @Environment(AuthManager.self) private var authManager
 
     @State private var selectedDate = Date()
     @State private var currentMonth = Date()
     @State private var selectedSession: TrainingGymSession?
-    @State private var showingProfile = false
 
     private let cal = Calendar.current
 
@@ -33,18 +31,7 @@ struct MySessionsView: View {
     }
 
     private var streakDays: Int {
-        var streak = 0
-        var checkDate = Date()
-        for _ in 0..<60 {
-            let hit = allSessions.contains {
-                cal.isDate($0.scheduledDate, inSameDayAs: checkDate) &&
-                ($0.isCompleted || $0.isCheckedIn || $0.clientCheckInPhotoURL != nil)
-            }
-            guard hit else { break }
-            streak += 1
-            checkDate = cal.date(byAdding: .day, value: -1, to: checkDate) ?? checkDate
-        }
-        return streak
+        StreakCalculator.trainingStreak(from: allSessions)
     }
 
     private var monthLabel: String {
@@ -89,47 +76,7 @@ struct MySessionsView: View {
     // MARK: - Header
 
     private var headerView: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(monthLabel)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.fitTextSecondary)
-                Text("Lịch tập")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.fitTextPrimary)
-            }
-            Spacer()
-            avatarCircle
-        }
-    }
-
-    private var avatarCircle: some View {
-        let name = authManager.userProfile?.fullName ?? allSessions.first?.client?.name ?? ""
-        let initials = name.split(separator: " ").compactMap { $0.first }.suffix(2).map { String($0) }.joined()
-        let display = initials.isEmpty ? "NH" : initials.uppercased()
-        return Button { showingProfile = true } label: {
-            if let urlStr = authManager.userProfile?.avatarUrl, !urlStr.isEmpty, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipShape(Circle())
-                    } else {
-                        initialsCircle(display)
-                    }
-                }
-            } else {
-                initialsCircle(display)
-            }
-        }
-        .sheet(isPresented: $showingProfile) { ProfileView() }
-    }
-
-    private func initialsCircle(_ text: String) -> some View {
-        ZStack {
-            Circle().fill(Color.fitGreen).frame(width: 44, height: 44)
-            Text(text).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-        }
+        ClientHeaderView(subtitle: monthLabel, title: "Lịch tập")
     }
 
     // MARK: - Calendar

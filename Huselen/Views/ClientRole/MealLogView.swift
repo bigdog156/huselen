@@ -10,24 +10,27 @@ internal import Combine
 
 struct MealLogView: View {
     @StateObject private var viewModel = MealLogViewModel()
-    @State private var showDatePicker = false
     @State private var captureForMealType: MealType?
-    @State private var capturedImage: UIImage?
-    @State private var showAnalysisSheet = false
-    @State private var pendingMealType: MealType?
     
     let userId: String
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Week Calendar
-                weekCalendarView
-                
-                Divider()
-                
-                // Meal List
-                ScrollView {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Month Calendar with fan photos
+                    MealCalendarView(
+                        viewModel: viewModel,
+                        userId: userId,
+                        onSelectDate: { _ in }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+
+                    Divider()
+                        .padding(.horizontal, 16)
+
+                    // Meal List
                     VStack(spacing: 24) {
                         // Daily Nutrition Summary
                         DailyNutritionSummaryView(
@@ -35,7 +38,7 @@ struct MealLogView: View {
                             selectedDate: viewModel.selectedDate,
                             isToday: viewModel.isToday
                         )
-                        
+
                         // Main meals (Sáng, Trưa, Chiều)
                         ForEach([MealType.breakfast, MealType.lunch, MealType.afternoon], id: \.self) { mealType in
                             MealSectionView(
@@ -62,9 +65,10 @@ struct MealLogView: View {
                                 }
                             )
                         }
-                        
+
                         // Dinner (Optional) - Collapsible
-                        DinnerSectionView(
+                        MealSectionView(
+                            mealType: .dinner,
                             mealLog: viewModel.mealLogs[.dinner],
                             onTapPhoto: {
                                 captureForMealType = .dinner
@@ -84,16 +88,17 @@ struct MealLogView: View {
                                 Task {
                                     await viewModel.deleteMealLog(userId: userId, mealType: .dinner)
                                 }
-                            }
+                            },
+                            isCollapsible: true
                         )
-                        
+
                         // Motivational quote
                         Text("\"Eat to nourish, not to punish.\"")
                             .font(.system(size: 14, weight: .medium, design: .serif))
                             .italic()
                             .foregroundColor(.secondary)
                             .padding(.vertical, 20)
-                        
+
                         Spacer(minLength: 100)
                     }
                     .padding(.horizontal, 16)
@@ -103,103 +108,22 @@ struct MealLogView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Nhật ký ăn uống")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showDatePicker = true
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 18))
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
             .profileToolbar()
             .task {
                 viewModel.initializeWeekDates()
                 await viewModel.loadMeals(userId: userId)
                 viewModel.calculateDailyNutrition()
             }
-            .sheet(item: $captureForMealType) { mealType in
-                MealPhotoCapture(
-                    mealType: mealType,
-                    onCapture: { image in
-                        let selectedMealType = mealType
-                        capturedImage = image
-                        pendingMealType = selectedMealType
-                        captureForMealType = nil
-
-                        // Delay to let camera sheet fully dismiss before presenting analysis sheet
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                            showAnalysisSheet = true
-                        }
-                    },
-                    onDismiss: {
-                        captureForMealType = nil
-                    }
-                )
-            }
-            .sheet(isPresented: $showAnalysisSheet) {
-                MealAnalysisResultSheet(
+            .fullScreenCover(item: $captureForMealType) { mealType in
+                MealCaptureFlowView(
                     viewModel: viewModel,
-                    image: capturedImage,
-                    mealType: pendingMealType ?? .breakfast,
-                    onSave: {
-                        Task {
-                            if let mealType = pendingMealType {
-                                // Combine user note with AI description
-                                let combinedNote: String? = {
-                                    let userNote = viewModel.userMealNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    let aiDescription = viewModel.mealDescription ?? ""
-                                    
-                                    if !userNote.isEmpty && !aiDescription.isEmpty {
-                                        return "\(userNote)\n\n\(aiDescription)"
-                                    } else if !userNote.isEmpty {
-                                        return userNote
-                                    } else if !aiDescription.isEmpty {
-                                        return aiDescription
-                                    }
-                                    return nil
-                                }()
-                                
-                                await viewModel.saveMealWithNutrition(
-                                    userId: userId,
-                                    mealType: mealType,
-                                    photo: capturedImage,
-                                    note: combinedNote,
-                                    feeling: nil,
-                                    calories: viewModel.editingCalories > 0 ? viewModel.editingCalories : nil,
-                                    proteinG: viewModel.editingProtein > 0 ? viewModel.editingProtein : nil,
-                                    carbsG: viewModel.editingCarbs > 0 ? viewModel.editingCarbs : nil,
-                                    fatG: viewModel.editingFat > 0 ? viewModel.editingFat : nil,
-                                    foodItems: viewModel.editingFoodItems.isEmpty ? nil : viewModel.editingFoodItems
-                                )
-                            }
-                            showAnalysisSheet = false
-                            capturedImage = nil
-                            pendingMealType = nil
-                            viewModel.clearAnalysisResult()
-                        }
+                    mealType: mealType,
+                    userId: userId,
+                    onComplete: {
+                        captureForMealType = nil
                     },
                     onDismiss: {
-                        showAnalysisSheet = false
-                        capturedImage = nil
-                        pendingMealType = nil
-                        viewModel.clearAnalysisResult()
-                    }
-                )
-            }
-            .sheet(isPresented: $showDatePicker) {
-                DatePickerSheet(
-                    selectedDate: viewModel.selectedDate,
-                    onSelect: { date in
-                        Task {
-                            await viewModel.selectDate(date, userId: userId)
-                        }
-                        showDatePicker = false
-                    },
-                    onDismiss: {
-                        showDatePicker = false
+                        captureForMealType = nil
                     }
                 )
             }
@@ -214,132 +138,8 @@ struct MealLogView: View {
         }
     }
     
+
     // MARK: - Month Calendar View
-    private var weekCalendarView: some View {
-        VStack(spacing: 8) {
-            // Month header with navigation
-            HStack {
-                // Previous month button
-                Button {
-                    viewModel.goToPreviousMonth()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.blue)
-                        .frame(width: 32, height: 32)
-                }
-                
-                Spacer()
-                
-                Text(viewModel.currentMonthYear)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                // Next month button (disabled if current month)
-                Button {
-                    viewModel.goToNextMonth()
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(viewModel.isCurrentMonth ? .gray.opacity(0.4) : .blue)
-                        .frame(width: 32, height: 32)
-                }
-                .disabled(viewModel.isCurrentMonth)
-                
-                // Today button
-                if !viewModel.isCurrentMonth {
-                    Button {
-                        viewModel.goToToday()
-                        Task {
-                            await viewModel.selectDate(Date(), userId: userId)
-                        }
-                    } label: {
-                        Text("Hôm nay")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.blue)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            
-            // Scrollable dates
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(viewModel.weekDates.enumerated()), id: \.element) { index, date in
-                            Button {
-                                Task {
-                                    await viewModel.selectDate(date, userId: userId)
-                                }
-                            } label: {
-                                VStack(spacing: 6) {
-                                    Text(viewModel.dayName(for: date))
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(
-                                            viewModel.isSelected(date) ? .white :
-                                                viewModel.isDateToday(date) ? .blue : .secondary
-                                        )
-                                    
-                                    Text(viewModel.dayNumber(for: date))
-                                        .font(.system(size: 16, weight: viewModel.isSelected(date) ? .bold : .medium))
-                                        .foregroundColor(
-                                            viewModel.isSelected(date) ? .white :
-                                                viewModel.isDateToday(date) ? .blue : .primary
-                                        )
-                                }
-                                .frame(width: 44, height: 60)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(viewModel.isSelected(date) ? Color.blue : Color.clear)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            viewModel.isDateToday(date) && !viewModel.isSelected(date) ? Color.blue : Color.clear,
-                                            lineWidth: 1.5
-                                        )
-                                )
-                            }
-                            .id(index)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .onAppear {
-                    // Auto-scroll to today on first appear
-                    if let todayIndex = viewModel.todayIndex {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                proxy.scrollTo(todayIndex, anchor: .center)
-                            }
-                        }
-                    }
-                }
-                .onChange(of: viewModel.displayedMonth) { _ in
-                    // Scroll to first day when month changes, or to selected date if in this month
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            if let selectedIndex = viewModel.selectedDateIndex {
-                                proxy.scrollTo(selectedIndex, anchor: .center)
-                            } else if let todayIndex = viewModel.todayIndex {
-                                proxy.scrollTo(todayIndex, anchor: .center)
-                            } else {
-                                proxy.scrollTo(0, anchor: .leading)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-    }
 }
 
 // MARK: - Meal Section View
@@ -349,178 +149,222 @@ struct MealSectionView: View {
     let onTapPhoto: () -> Void
     let onSaveNote: (String) -> Void
     let onDelete: () -> Void
-    
+    var isCollapsible: Bool = false
+
+    @State private var isExpanded = false
     @State private var noteText: String = ""
-    @State private var showMenu = false
     @FocusState private var isNoteFocused: Bool
-    
+
+    private var shouldShowContent: Bool {
+        !isCollapsible || isExpanded || mealLog?.hasContent == true
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Text(mealType.displayName)
-                    .font(.system(size: 18, weight: .bold))
-                
-                Spacer()
-                
-                if let log = mealLog, log.hasContent {
-                    Text(log.formattedTime)
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                } else {
-                    Text(mealType.placeholder)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            
-            // Content - Locket Style 1:1 Photo
-            if let log = mealLog, let photoUrl = log.photoUrl, let url = URL(string: photoUrl) {
-                // Photo Card - Locket Style
-                LocketStylePhotoCard(
-                    url: url,
-                    note: log.note,
-                    onDelete: onDelete
-                )
+            if isCollapsible {
+                collapsibleHeader
             } else {
-                // Empty state - Photo capture area (1:1 ratio)
-                Button {
-                    onTapPhoto()
-                } label: {
-                    GeometryReader { geometry in
-                        VStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color(.systemGray5))
-                                    .frame(width: 56, height: 56)
-                                
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 22))
-                                    .foregroundColor(.secondary)
-                                
-                                // Plus badge
-                                Circle()
-                                    .fill(Color.blue)
-                                    .frame(width: 20, height: 20)
-                                    .overlay(
-                                        Image(systemName: "plus")
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundColor(.white)
-                                    )
-                                    .offset(x: 20, y: -20)
-                            }
-                            
-                            Text(mealType.photoPlaceholder)
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(width: geometry.size.width, height: geometry.size.width) // 1:1 ratio
-                        .background(
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [8]))
-                                .foregroundColor(Color(.systemGray4))
-                        )
-                    }
-                    .aspectRatio(1, contentMode: .fit)
-                }
+                standardHeader
             }
-            
-            // Note Input - Always visible below photo/empty state
-            VStack(alignment: .leading, spacing: 8) {
-                // Show existing note if any (read-only display)
-                if let log = mealLog, let existingNote = log.note, !existingNote.isEmpty, noteText.isEmpty {
-                    HStack(spacing: 10) {
-                        Image(systemName: "note.text")
-                            .font(.system(size: 14))
-                            .foregroundColor(.blue)
-                        
-                        Text(existingNote)
-                            .font(.system(size: 14))
-                            .foregroundColor(.primary)
-                            .lineLimit(3)
-                        
-                        Spacer()
-                        
-                        Button {
-                            noteText = existingNote
-                            isNoteFocused = true
-                        } label: {
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                    )
+
+            if shouldShowContent {
+                mealContentView
+                noteInputView
+
+                if let calories = mealLog?.calories, calories > 0 {
+                    MealCalorieDisplay(mealLog: mealLog)
                 }
-                
-                // Note input field
-                HStack(spacing: 12) {
-                    Image(systemName: "text.alignleft")
-                        .font(.system(size: 16))
-                        .foregroundColor(.secondary)
-                    
-                    TextField("Thêm ghi chú cho bữa ăn...", text: $noteText)
-                        .font(.system(size: 15))
-                        .focused($isNoteFocused)
-                        .onSubmit {
-                            if !noteText.isEmpty {
-                                onSaveNote(noteText)
-                                noteText = ""
-                            }
-                        }
-                    
-                    if !noteText.isEmpty {
-                        Button {
-                            onSaveNote(noteText)
-                            noteText = ""
-                            isNoteFocused = false
-                        } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.blue)
-                        }
-                    }
+
+                if mealLog?.hasContent == true && !isCollapsible {
+                    feelingSelector
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.systemBackground))
-                        .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
-                )
-            }
-            
-            // Calorie display (if meal has calories)
-            if let calories = mealLog?.calories, calories > 0 {
-                MealCalorieDisplay(mealLog: mealLog)
-            }
-            
-            // Feeling selector (only show if meal has content)
-            if mealLog?.hasContent == true {
-                feelingSelector
             }
         }
         .onAppear {
             noteText = mealLog?.note ?? ""
         }
     }
-    
+
+    // MARK: - Headers
+
+    private var standardHeader: some View {
+        HStack {
+            Text(mealType.displayName)
+                .font(.system(size: 18, weight: .bold))
+
+            Spacer()
+
+            if let log = mealLog, log.hasContent {
+                Text(log.formattedTime)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            } else {
+                Text(mealType.placeholder)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var collapsibleHeader: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack {
+                Text(mealType.displayName)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text("TÙY CHỌN")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color(.systemGray5)))
+
+                Spacer()
+
+                if let log = mealLog, log.hasContent {
+                    Text(log.formattedTime)
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(isExpanded || mealLog?.hasContent == true ? 180 : 0))
+            }
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var mealContentView: some View {
+        if let log = mealLog, let photoUrl = log.photoUrl, let url = URL(string: photoUrl) {
+            LocketStylePhotoCard(url: url, note: log.note, onDelete: onDelete)
+        } else {
+            Button { onTapPhoto() } label: {
+                GeometryReader { geometry in
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(.systemGray5))
+                                .frame(width: 56, height: 56)
+
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.secondary)
+
+                            // Plus badge
+                            Circle()
+                                .fill(Color.blue)
+                                .frame(width: 20, height: 20)
+                                .overlay(
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.white)
+                                )
+                                .offset(x: 20, y: -20)
+                        }
+
+                        Text(mealType.photoPlaceholder)
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.width) // 1:1 ratio
+                    .background(
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [8]))
+                            .foregroundColor(Color(.systemGray4))
+                    )
+                }
+                .aspectRatio(1, contentMode: .fit)
+            }
+        }
+    }
+
+    private var noteInputView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let log = mealLog, let existingNote = log.note, !existingNote.isEmpty, noteText.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 14))
+                        .foregroundColor(.blue)
+
+                    Text(existingNote)
+                        .font(.system(size: 14))
+                        .foregroundColor(.primary)
+                        .lineLimit(3)
+
+                    Spacer()
+
+                    Button {
+                        noteText = existingNote
+                        isNoteFocused = true
+                    } label: {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+            }
+
+            HStack(spacing: 12) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 16))
+                    .foregroundColor(.secondary)
+
+                TextField("Thêm ghi chú cho bữa ăn...", text: $noteText)
+                    .font(.system(size: 15))
+                    .focused($isNoteFocused)
+                    .onSubmit {
+                        if !noteText.isEmpty {
+                            onSaveNote(noteText)
+                            noteText = ""
+                        }
+                    }
+
+                if !noteText.isEmpty {
+                    Button {
+                        onSaveNote(noteText)
+                        noteText = ""
+                        isNoteFocused = false
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+            )
+        }
+    }
+
     // MARK: - Feeling Selector
+
     private var feelingSelector: some View {
         HStack(spacing: 16) {
             Text("CẢM NHẬN")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.secondary)
                 .tracking(1)
-            
+
             Spacer()
-            
+
             ForEach(MealFeeling.allCases, id: \.self) { feeling in
                 Button {
                     // Handle feeling selection
@@ -603,190 +447,6 @@ struct LocketStylePhotoCard: View {
     }
 }
 
-// MARK: - Dinner Section View (Collapsible)
-struct DinnerSectionView: View {
-    let mealLog: UserMealLog?
-    let onTapPhoto: () -> Void
-    let onSaveNote: (String) -> Void
-    let onDelete: () -> Void
-    
-    @State private var isExpanded = false
-    @State private var noteText: String = ""
-    @FocusState private var isNoteFocused: Bool
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header with expand button
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Text(MealType.dinner.displayName)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
-                    
-                    Text("TÙY CHỌN")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(Color(.systemGray5))
-                        )
-                    
-                    Spacer()
-                    
-                    if let log = mealLog, log.hasContent {
-                        Text(log.formattedTime)
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isExpanded || mealLog?.hasContent == true ? 180 : 0))
-                }
-            }
-            
-            // Content (when expanded or has content)
-            if isExpanded || mealLog?.hasContent == true {
-                // Content - Locket Style 1:1 Photo
-                if let log = mealLog, let photoUrl = log.photoUrl, let url = URL(string: photoUrl) {
-                    // Photo Card - Locket Style
-                    LocketStylePhotoCard(
-                        url: url,
-                        note: log.note,
-                        onDelete: onDelete
-                    )
-                } else {
-                    // Empty state - Photo capture area (1:1 ratio)
-                    Button {
-                        onTapPhoto()
-                    } label: {
-                        GeometryReader { geometry in
-                            VStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color(.systemGray5))
-                                        .frame(width: 56, height: 56)
-                                    
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 22))
-                                        .foregroundColor(.secondary)
-                                    
-                                    // Plus badge
-                                    Circle()
-                                        .fill(Color.blue)
-                                        .frame(width: 20, height: 20)
-                                        .overlay(
-                                            Image(systemName: "plus")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(.white)
-                                        )
-                                        .offset(x: 20, y: -20)
-                                }
-                                
-                                Text(MealType.dinner.photoPlaceholder)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.secondary)
-                            }
-                            .frame(width: geometry.size.width, height: geometry.size.width) // 1:1 ratio
-                            .background(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [8]))
-                                    .foregroundColor(Color(.systemGray4))
-                            )
-                        }
-                        .aspectRatio(1, contentMode: .fit)
-                    }
-                }
-                
-                // Note Input - Same style as MealSectionView
-                VStack(alignment: .leading, spacing: 8) {
-                    // Show existing note if any (read-only display)
-                    if let log = mealLog, let existingNote = log.note, !existingNote.isEmpty, noteText.isEmpty {
-                        HStack(spacing: 10) {
-                            Image(systemName: "note.text")
-                                .font(.system(size: 14))
-                                .foregroundColor(.blue)
-                            
-                            Text(existingNote)
-                                .font(.system(size: 14))
-                                .foregroundColor(.primary)
-                                .lineLimit(3)
-                            
-                            Spacer()
-                            
-                            Button {
-                                noteText = existingNote
-                                isNoteFocused = true
-                            } label: {
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.systemGray6))
-                        )
-                    }
-                    
-                    // Note input field
-                    HStack(spacing: 12) {
-                        Image(systemName: "text.alignleft")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Thêm ghi chú cho bữa ăn...", text: $noteText)
-                            .font(.system(size: 15))
-                            .focused($isNoteFocused)
-                            .onSubmit {
-                                if !noteText.isEmpty {
-                                    onSaveNote(noteText)
-                                    noteText = ""
-                                }
-                            }
-                        
-                        if !noteText.isEmpty {
-                            Button {
-                                onSaveNote(noteText)
-                                noteText = ""
-                                isNoteFocused = false
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemBackground))
-                            .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
-                    )
-                }
-                
-                // Calorie display (if meal has calories)
-                if let calories = mealLog?.calories, calories > 0 {
-                    MealCalorieDisplay(mealLog: mealLog)
-                }
-            }
-        }
-        .onAppear {
-            noteText = mealLog?.note ?? ""
-        }
-    }
-}
-
 // MARK: - Meal Photo Capture (Locket Style)
 struct MealPhotoCapture: View {
     let mealType: MealType
@@ -794,7 +454,7 @@ struct MealPhotoCapture: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        LocketCameraView(title: mealType.displayName) { data in
+        LocketCameraView(title: mealType.displayName, useBackCamera: true) { data in
             if let image = UIImage(data: data) {
                 onCapture(image)
             }
@@ -857,14 +517,18 @@ struct DailyNutritionSummaryView: View {
     let selectedDate: Date
     let isToday: Bool
     
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "dd/MM"
+        return formatter
+    }()
+
     private var dateLabel: String {
         if isToday {
             return "Tổng calo hôm nay"
         } else {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "vi_VN")
-            formatter.dateFormat = "dd/MM"
-            return "Tổng calo ngày \(formatter.string(from: selectedDate))"
+            return "Tổng calo ngày \(Self.dateFormatter.string(from: selectedDate))"
         }
     }
     

@@ -9,9 +9,13 @@ import PhotosUI
 final class LocketCameraManager: NSObject {
     var isSessionRunning = false
     var capturedImage: UIImage?
-    var isFrontCamera = true
+    var isFrontCamera: Bool = true
     var flashEnabled = false
     var permissionDenied = false
+
+    init(isFrontCamera: Bool = true) {
+        self.isFrontCamera = isFrontCamera
+    }
 
     let session = AVCaptureSession()
     private var photoOutput = AVCapturePhotoOutput()
@@ -108,6 +112,19 @@ final class LocketCameraManager: NSObject {
     func retake() {
         capturedImage = nil
     }
+
+    /// Crops a UIImage to a centered square.
+    private static func cropToSquare(_ image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
+        let w = CGFloat(cgImage.width)
+        let h = CGFloat(cgImage.height)
+        let side = min(w, h)
+        let x = (w - side) / 2
+        let y = (h - side) / 2
+        let cropRect = CGRect(x: x, y: y, width: side, height: side)
+        guard let cropped = cgImage.cropping(to: cropRect) else { return image }
+        return UIImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
+    }
 }
 
 extension LocketCameraManager: @preconcurrency AVCapturePhotoCaptureDelegate {
@@ -119,6 +136,8 @@ extension LocketCameraManager: @preconcurrency AVCapturePhotoCaptureDelegate {
             if self?.isFrontCamera == true, let cgImage = image.cgImage {
                 image = UIImage(cgImage: cgImage, scale: image.scale, orientation: .leftMirrored)
             }
+            // Auto-crop to square (1:1)
+            image = LocketCameraManager.cropToSquare(image)
             self?.capturedImage = image
         }
     }
@@ -164,7 +183,7 @@ struct SquareCropView: View {
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
 
-    private let previewCornerRadius: CGFloat = 44
+    private let previewCornerRadius: CGFloat = 32
 
     var body: some View {
         GeometryReader { geo in
@@ -181,7 +200,7 @@ struct SquareCropView: View {
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 42, height: 42)
-                                .background(Circle().fill(.black.opacity(0.35)))
+                                .background(Circle().fill(.white.opacity(0.12)))
                         }
                         Spacer()
                         Text("Di chuyển & thu phóng")
@@ -234,53 +253,34 @@ struct SquareCropView: View {
                     Spacer()
 
                     // Bottom controls
-                    HStack(spacing: 50) {
+                    HStack(spacing: 40) {
                         Button { onCancel() } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 56, height: 56)
-                                    .background(Circle().fill(.white.opacity(0.12)))
-                                Text("Huỷ")
-                                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.6))
-                            }
+                            Text("Huỷ")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 80, height: 50)
+                                .background(
+                                    Capsule().fill(.white.opacity(0.12))
+                                )
                         }
 
                         Button {
                             let cropped = performCrop(cropSize: cropSize)
                             onCrop(cropped)
                         } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 26, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 64, height: 64)
-                                    .background(
-                                        Circle()
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [
-                                                        Color(red: 1.0, green: 0.82, blue: 0.2),
-                                                        Color(red: 0.95, green: 0.7, blue: 0.1)
-                                                    ],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                            .shadow(color: Color(red: 1.0, green: 0.82, blue: 0.2).opacity(0.5), radius: 12, y: 4)
-                                    )
-                                Text("Xong")
-                                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.2))
-                            }
+                            Text("Xong")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .frame(width: 120, height: 50)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.fitGreen)
+                                        .shadow(color: Color.fitGreen.opacity(0.4), radius: 12, y: 4)
+                                )
                         }
-
-                        Color.clear.frame(width: 56, height: 76)
                     }
 
-                    Spacer().frame(height: geo.safeAreaInsets.bottom + 16)
+                    Spacer().frame(height: geo.safeAreaInsets.bottom + 20)
                 }
             }
         }
@@ -292,7 +292,6 @@ struct SquareCropView: View {
         let imgSize = image.size
         let aspect = imgSize.width / imgSize.height
 
-        // Size of image as displayed (scaledToFill in square)
         let displayW: CGFloat
         let displayH: CGFloat
         if aspect > 1 {
@@ -316,7 +315,6 @@ struct SquareCropView: View {
         let imgSize = image.size
         let aspect = imgSize.width / imgSize.height
 
-        // How the image is displayed (scaledToFill in the square)
         let displayW: CGFloat
         let displayH: CGFloat
         if aspect > 1 {
@@ -327,15 +325,12 @@ struct SquareCropView: View {
             displayH = displayW / aspect
         }
 
-        // Ratio from display to actual image pixels
         let ratioX = imgSize.width / displayW
         let ratioY = imgSize.height / displayH
 
-        // The visible crop window center in display coords
         let centerX = displayW / 2 - offset.width
         let centerY = displayH / 2 - offset.height
 
-        // Convert to image pixel coords
         let cropX = (centerX - cropSize / 2) * ratioX
         let cropY = (centerY - cropSize / 2) * ratioY
         let cropW = cropSize * ratioX
@@ -359,13 +354,16 @@ struct LocketCameraView: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     let onCapture: (Data) -> Void
+    let useBackCamera: Bool
 
-    init(title: String = "Check-in", onCapture: @escaping (Data) -> Void) {
+    init(title: String = "Check-in", useBackCamera: Bool = false, onCapture: @escaping (Data) -> Void) {
         self.title = title
+        self.useBackCamera = useBackCamera
         self.onCapture = onCapture
+        self._camera = State(initialValue: LocketCameraManager(isFrontCamera: !useBackCamera))
     }
 
-    @State private var camera = LocketCameraManager()
+    @State private var camera: LocketCameraManager
     @State private var shutterScale: CGFloat = 1.0
     @State private var showFlash = false
     @State private var flipRotation: Double = 0
@@ -375,14 +373,12 @@ struct LocketCameraView: View {
     @State private var pickedImage: UIImage?
     @State private var showCropView = false
 
-    private let previewCornerRadius: CGFloat = 44
+    private let previewCornerRadius: CGFloat = 32
 
     var body: some View {
         ZStack {
-            // Main camera UI
             cameraBody
 
-            // Crop overlay for gallery picks
             if showCropView, let image = pickedImage {
                 SquareCropView(
                     image: image,
@@ -417,36 +413,47 @@ struct LocketCameraView: View {
 
     private var cameraBody: some View {
         GeometryReader { geo in
-            let screenWidth = geo.size.width
-            let previewSize = screenWidth
+            let screenW = geo.size.width
+            let previewSize = screenW - 16  // 1:1 square
 
             ZStack {
-                Color.black.ignoresSafeArea()
+                // Dark gradient background
+                LinearGradient(
+                    colors: [Color(red: 0.08, green: 0.08, blue: 0.10),
+                             Color(red: 0.04, green: 0.04, blue: 0.06)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    // Top bar
                     topBar
                         .padding(.horizontal, 16)
-                        .padding(.top, geo.safeAreaInsets.top + 8)
-                        .padding(.bottom, 12)
+                        .padding(.top, geo.safeAreaInsets.top + 4)
+                        .padding(.bottom, 8)
 
-                    // Camera preview — 1:1 square, edge-to-edge width
+                    // Camera preview — 1:1 square
                     ZStack {
                         if camera.permissionDenied {
-                            permissionDeniedView(size: previewSize)
+                            permissionDeniedView(width: previewSize, height: previewSize)
                         } else if let image = camera.capturedImage {
+                            // Captured photo (already cropped to square)
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: previewSize, height: previewSize)
                                 .clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
-                                .transition(.scale.combined(with: .opacity))
+                                .transition(.scale(scale: 0.95).combined(with: .opacity))
                         } else {
+                            // Live preview
                             CameraPreviewView(session: camera.session)
                                 .frame(width: previewSize, height: previewSize)
                                 .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
 
-                            overlayControls(size: previewSize)
+                            // Flash & flip overlay on preview
+                            previewOverlay(width: previewSize, height: previewSize)
 
                             if showFlash {
                                 RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
@@ -459,15 +466,16 @@ struct LocketCameraView: View {
                     .frame(width: previewSize, height: previewSize)
                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: camera.capturedImage != nil)
 
-                    Spacer()
+                    Spacer(minLength: 12)
 
+                    // Bottom controls
                     if camera.capturedImage != nil {
                         capturedControls
                     } else {
                         cameraControls
                     }
 
-                    Spacer().frame(height: geo.safeAreaInsets.bottom + 16)
+                    Spacer().frame(height: geo.safeAreaInsets.bottom + 12)
                 }
             }
         }
@@ -481,123 +489,134 @@ struct LocketCameraView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
+            // Close button
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().fill(.black.opacity(0.35)))
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(.white.opacity(0.12)))
             }
 
             Spacer()
 
-            HStack(spacing: 6) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(.black.opacity(0.35)))
+            // Title pill
+            Text(title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.8))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.white.opacity(0.1)))
 
             Spacer()
 
-            Color.clear.frame(width: 42, height: 42)
-        }
-    }
-
-    // MARK: - Overlay Controls
-
-    private func overlayControls(size: CGFloat) -> some View {
-        VStack {
-            Spacer()
-
-            HStack {
+            // Flash toggle (only when not captured)
+            if camera.capturedImage == nil {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
                         camera.flashEnabled.toggle()
                     }
                 } label: {
                     Image(systemName: camera.flashEnabled ? "bolt.fill" : "bolt.slash.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(camera.flashEnabled ? Color(red: 1.0, green: 0.82, blue: 0.2) : .white)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(camera.flashEnabled ? Color(red: 1.0, green: 0.82, blue: 0.2) : .white.opacity(0.6))
                         .frame(width: 38, height: 38)
-                        .background(Circle().fill(.black.opacity(0.35)))
+                        .background(
+                            Circle().fill(camera.flashEnabled ? Color(red: 1.0, green: 0.82, blue: 0.2).opacity(0.15) : .white.opacity(0.12))
+                        )
                 }
-
-                Spacer()
-
-                Text("1×")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(.black.opacity(0.35)))
+            } else {
+                Color.clear.frame(width: 38, height: 38)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
         }
-        .frame(width: size, height: size)
     }
 
-    // MARK: - Camera Controls
+    // MARK: - Preview Overlay (flash & flip on the preview image)
 
-    private var cameraControls: some View {
-        HStack(alignment: .center) {
-            // Photo library picker
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 46, height: 46)
-                    .overlay(
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                    )
-            }
-
+    private func previewOverlay(width: CGFloat, height: CGFloat) -> some View {
+        VStack {
             Spacer()
 
-            // Shutter
+            HStack {
+                Spacer()
+
+                // Flip camera button on preview
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        camera.flipCamera()
+                        flipRotation += 180
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .background(Circle().fill(.ultraThinMaterial).opacity(0.8))
+                        .rotationEffect(.degrees(flipRotation))
+                }
+                .padding(16)
+            }
+        }
+        .frame(width: width, height: height)
+    }
+
+    // MARK: - Camera Controls (live preview state)
+
+    private var cameraControls: some View {
+        HStack(alignment: .center, spacing: 0) {
+            // Gallery picker
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                VStack(spacing: 4) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 50, height: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.white.opacity(0.08))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                                )
+                        )
+                    Text("Thư viện")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            // Shutter button
             Button {
-                withAnimation(.easeIn(duration: 0.1)) {
+                withAnimation(.easeIn(duration: 0.08)) {
                     shutterScale = 0.88
                     showFlash = true
                 }
                 camera.capturePhoto()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                         shutterScale = 1.0
                     }
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(.easeOut(duration: 0.15)) {
                         showFlash = false
                     }
                 }
             } label: {
                 ZStack {
+                    // Outer ring
                     Circle()
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 1.0, green: 0.82, blue: 0.2),
-                                    Color(red: 0.95, green: 0.7, blue: 0.1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 4
-                        )
-                        .frame(width: 82, height: 82)
+                        .stroke(.white.opacity(0.3), lineWidth: 3)
+                        .frame(width: 78, height: 78)
 
+                    // Inner circle
                     Circle()
                         .fill(.white)
-                        .frame(width: 68, height: 68)
+                        .frame(width: 64, height: 64)
+                        .shadow(color: .white.opacity(0.2), radius: 8, y: 0)
                 }
                 .scaleEffect(shutterScale)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity)
 
             // Flip camera
             Button {
@@ -606,85 +625,97 @@ struct LocketCameraView: View {
                     flipRotation += 180
                 }
             } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(Circle().fill(.white.opacity(0.12)))
-                    .rotationEffect(.degrees(flipRotation))
+                VStack(spacing: 4) {
+                    Image(systemName: "camera.rotate.fill")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 50, height: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.white.opacity(0.08))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                                )
+                        )
+                        .rotationEffect(.degrees(flipRotation))
+                    Text("Lật")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
             }
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 24)
     }
 
-    // MARK: - Captured Controls
+    // MARK: - Captured Controls (after photo taken)
 
     private var capturedControls: some View {
-        HStack(spacing: 50) {
-            Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    camera.retake()
-                }
-            } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 56, height: 56)
-                        .background(Circle().fill(.white.opacity(0.12)))
-                    Text("Chụp lại")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-            }
-
+        VStack(spacing: 12) {
+            // Primary action — Send
             Button {
                 guard let image = camera.capturedImage,
                       let data = image.jpegData(compressionQuality: 0.6) else { return }
                 onCapture(data)
             } label: {
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 64, height: 64)
-                        .background(
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 1.0, green: 0.82, blue: 0.2),
-                                            Color(red: 0.95, green: 0.7, blue: 0.1)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .shadow(color: Color(red: 1.0, green: 0.82, blue: 0.2).opacity(0.5), radius: 12, y: 4)
-                        )
-                    Text("Gửi")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.2))
+                        .font(.system(size: 16, weight: .bold))
+                    Text("Sử dụng ảnh này")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                 }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    Capsule()
+                        .fill(Color.fitGreen)
+                        .shadow(color: Color.fitGreen.opacity(0.3), radius: 12, y: 4)
+                )
             }
 
-            Color.clear.frame(width: 56, height: 76)
+            // Secondary action — Retake
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    camera.retake()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Chụp lại")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(.white.opacity(0.7))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    Capsule()
+                        .fill(.white.opacity(0.08))
+                        .overlay(
+                            Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                        )
+                )
+            }
         }
+        .padding(.horizontal, 24)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     // MARK: - Permission Denied
 
-    private func permissionDeniedView(size: CGFloat) -> some View {
+    private func permissionDeniedView(width: CGFloat, height: CGFloat) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "camera.fill")
                 .font(.system(size: 40))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.3))
             Text("Cần quyền truy cập Camera")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.8))
-            Text("Vào Cài đặt → Huselen → Bật Camera")
+            Text("Vào Cài đặt > Huselen > Bật Camera")
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.white.opacity(0.4))
             Button {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
@@ -692,16 +723,16 @@ struct LocketCameraView: View {
             } label: {
                 Text("Mở Cài đặt")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
-                    .background(Capsule().fill(.white))
+                    .background(Capsule().fill(Color.fitGreen))
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: width, height: height)
         .background(
             RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.1))
+                .fill(.white.opacity(0.06))
         )
     }
 }
