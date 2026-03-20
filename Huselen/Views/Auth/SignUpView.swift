@@ -8,6 +8,7 @@ struct SignUpView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var selectedRole: UserRole = .owner
+    @State private var isFreelance = false
     @State private var showSuccess = false
 
     var body: some View {
@@ -50,6 +51,25 @@ struct SignUpView: View {
                             }
                             .pickerStyle(.menu)
                             .cuteTextField()
+                            .onChange(of: selectedRole) { _, newRole in
+                                if newRole != .trainer { isFreelance = false }
+                            }
+                        }
+
+                        // Freelance sub-selection for trainers
+                        if selectedRole == .trainer {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Loại PT")
+                                    .font(Theme.Fonts.subheadline())
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                                Picker("Loại PT", selection: $isFreelance) {
+                                    Text("PT phòng gym").tag(false)
+                                    Text("PT tự do").tag(true)
+                                }
+                                .pickerStyle(.segmented)
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .animation(.easeInOut(duration: 0.2), value: selectedRole)
                         }
 
                         VStack(alignment: .leading, spacing: 8) {
@@ -139,7 +159,8 @@ struct SignUpView: View {
                 email: email.trimmingCharacters(in: .whitespaces),
                 password: password,
                 fullName: fullName.trimmingCharacters(in: .whitespaces),
-                role: selectedRole
+                role: selectedRole,
+                isFreelance: isFreelance
             )
             if authManager.errorMessage == nil && !authManager.isAuthenticated {
                 showSuccess = true

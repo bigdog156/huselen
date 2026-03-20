@@ -17,13 +17,17 @@ struct ContentView: View {
             case .owner:
                 AdminTabView()
             case .trainer:
-                TrainerTabView()
+                if authManager.isFreelancePT {
+                    FreelanceTrainerTabView()
+                } else {
+                    TrainerTabView()
+                }
             case .client:
                 ClientTabView()
             }
         }
         .task {
-            await syncManager.fetchAll(role: authManager.userRole)
+            await syncManager.fetchAll(role: authManager.userRole, isFreelance: authManager.isFreelancePT)
         }
         .alert("Lỗi", isPresented: Binding(
             get: { syncManager.errorMessage != nil },

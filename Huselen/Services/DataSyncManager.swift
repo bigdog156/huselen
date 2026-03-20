@@ -23,6 +23,7 @@ struct GymTrainer: Codable {
     var sessionRate: Double
     var sessionRatePercent: Double
     var branchId: UUID?
+    var inviteCode: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -37,6 +38,7 @@ struct GymTrainer: Codable {
         case sessionRate = "session_rate"
         case sessionRatePercent = "session_rate_percent"
         case branchId = "branch_id"
+        case inviteCode = "invite_code"
     }
 }
 
@@ -233,6 +235,7 @@ final class DataSyncManager {
     var errorMessage: String?
     var isSyncing = false
     private var lastRole: UserRole = .owner
+    var isFreelance = false
 
     // In-memory data store (source of truth is Supabase)
     var trainers: [Trainer] = []
@@ -248,7 +251,7 @@ final class DataSyncManager {
     var progressPhotos: [ProgressPhoto] = []
 
     func refresh() async {
-        await fetchAll(role: lastRole)
+        await fetchAll(role: lastRole, isFreelance: isFreelance)
     }
 
     private func ownerId() async throws -> UUID {
@@ -259,7 +262,8 @@ final class DataSyncManager {
     /// For PT role, returns the trainer's owner_id so admin can see the data.
     private func dataOwnerId() async throws -> UUID {
         let userId = try await supabase.auth.session.user.id
-        if lastRole == .trainer {
+        if lastRole == .trainer && !isFreelance {
+            // Only gym trainers resolve to gym owner's ID
             if let trainer = trainers.first(where: { $0.profileId == userId }),
                let ownerRow: OwnerIdRow = try? await supabase
                 .from("trainers")
@@ -858,20 +862,49 @@ final class DataSyncManager {
 
     // MARK: - Fetch All from Supabase
 
-    func fetchAll(role: UserRole = .owner) async {
+    func fetchAll(role: UserRole = .owner, isFreelance: Bool = false) async {
         isSyncing = true
         lastRole = role
+        self.isFreelance = isFreelance
         defer { isSyncing = false }
 
         do {
             let userId = try await ownerId()
 
             // Fetch trainers
-            let remoteTrainers: [GymTrainer]
+            var remoteTrainers: [GymTrainer]
             if role == .trainer {
                 // PT: fetch own trainer record via profile_id
                 remoteTrainers = (try? await supabase.from("trainers").select()
                     .eq("profile_id", value: userId.uuidString).execute().value) ?? []
+
+                // Auto-create trainer record for freelance PT on first login
+                if remoteTrainers.isEmpty && isFreelance {
+                    let profile: UserProfile? = try? await supabase.from("profiles").select()
+                        .eq("id", value: userId.uuidString).single().execute().value
+                    // Generate a short invite code for freelance PT
+                    let code = String(UUID().uuidString.prefix(8)).lowercased()
+                    let dto = GymTrainer(
+                        ownerId: userId,
+                        profileId: userId,
+                        name: profile?.fullName ?? "",
+                        phone: profile?.phone ?? "",
+                        specialization: "",
+                        experienceYears: 0,
+                        bio: "",
+                        isActive: true,
+                        revenueMode: "per_session",
+                        sessionRateType: "fixed",
+                        sessionRate: 0,
+                        sessionRatePercent: 0,
+                        branchId: nil,
+                        inviteCode: code
+                    )
+                    if let created: GymTrainer = try? await supabase.from("trainers")
+                        .insert(dto).select().single().execute().value {
+                        remoteTrainers = [created]
+                    }
+                }
             } else {
                 remoteTrainers = try await supabase.from("trainers").select().execute().value
             }
@@ -911,20 +944,26 @@ final class DataSyncManager {
                     existing.sessionRatePercent = remote.sessionRatePercent
                     existing.branchId = remote.branchId
                     existing.branch = remote.branchId.flatMap { branchById[$0] }
+                    existing.inviteCode = remote.inviteCode
                     newTrainers.append(existing)
                 } else {
                     let t = Trainer(name: remote.name, phone: remote.phone, specialization: remote.specialization, experienceYears: remote.experienceYears, bio: remote.bio, isActive: remote.isActive, profileId: remote.profileId, revenueMode: Trainer.RevenueMode(rawValue: remote.revenueMode) ?? .perPackage, sessionRateType: Trainer.SessionRateType(rawValue: remote.sessionRateType) ?? .fixed, sessionRate: remote.sessionRate, sessionRatePercent: remote.sessionRatePercent)
                     t.id = remoteId
                     t.branchId = remote.branchId
                     t.branch = remote.branchId.flatMap { branchById[$0] }
+                    t.inviteCode = remote.inviteCode
                     newTrainers.append(t)
                 }
             }
 
             // For PT: also fetch clients linked to their sessions
             let remoteClients: [GymClient]
-            if role == .trainer, let trainerId = newTrainers.first?.id {
-                // Get client IDs from trainer's sessions first
+            if role == .trainer && isFreelance {
+                // Freelance PT owns clients directly
+                remoteClients = (try? await supabase.from("clients").select()
+                    .eq("owner_id", value: userId.uuidString).execute().value) ?? []
+            } else if role == .trainer, let trainerId = newTrainers.first?.id {
+                // Gym PT: get client IDs from trainer's sessions first
                 let trainerSessions: [GymSession] = (try? await supabase.from("training_sessions").select()
                     .eq("trainer_id", value: trainerId.uuidString).execute().value) ?? []
                 let clientIds = Set(trainerSessions.compactMap { $0.clientId })
@@ -977,7 +1016,7 @@ final class DataSyncManager {
             }
 
             // Build lookup dictionaries
-            let trainerById = Dictionary(uniqueKeysWithValues: newTrainers.map { ($0.id, $0) })
+            var trainerById = Dictionary(uniqueKeysWithValues: newTrainers.map { ($0.id, $0) })
             let clientById = Dictionary(uniqueKeysWithValues: newClients.map { ($0.id, $0) })
 
             // Fetch packages for name lookup (use try? for non-owner roles)
@@ -987,9 +1026,11 @@ final class DataSyncManager {
                 return (id, pkg)
             })
 
-            // Fetch purchases
+            // Fetch purchases (skip for freelance PT)
             let remotePurchases: [GymPurchase]
-            if role == .trainer, let trainerId = newTrainers.first?.id {
+            if role == .trainer && isFreelance {
+                remotePurchases = []
+            } else if role == .trainer, let trainerId = newTrainers.first?.id {
                 remotePurchases = (try? await supabase.from("package_purchases").select()
                     .eq("trainer_id", value: trainerId.uuidString).execute().value) ?? []
             } else {
@@ -1047,7 +1088,36 @@ final class DataSyncManager {
             }
 
             // Fetch sessions
-            let remoteSessions: [GymSession] = try await supabase.from("training_sessions").select().execute().value
+            let remoteSessions: [GymSession]
+            if role == .trainer && isFreelance {
+                remoteSessions = (try? await supabase.from("training_sessions").select()
+                    .eq("owner_id", value: userId.uuidString).execute().value) ?? []
+            } else {
+                remoteSessions = try await supabase.from("training_sessions").select().execute().value
+            }
+            // For client role: fetch any trainers referenced in sessions
+            // that may not be visible via regular RLS (e.g. freelance PT trainer records)
+            if role == .client {
+                let sessionTrainerIds = Set(remoteSessions.compactMap { $0.trainerId })
+                let missingTrainerIds = sessionTrainerIds.filter { trainerById[$0] == nil }
+                if !missingTrainerIds.isEmpty {
+                    let extraTrainers: [GymTrainer] = (try? await supabase.from("trainers")
+                        .select()
+                        .in("id", values: missingTrainerIds.map { $0.uuidString })
+                        .execute()
+                        .value) ?? []
+                    for remote in extraTrainers {
+                        guard let remoteId = remote.id else { continue }
+                        let t = Trainer(name: remote.name, phone: remote.phone, specialization: remote.specialization, experienceYears: remote.experienceYears, bio: remote.bio, isActive: remote.isActive, profileId: remote.profileId, revenueMode: Trainer.RevenueMode(rawValue: remote.revenueMode) ?? .perPackage, sessionRateType: Trainer.SessionRateType(rawValue: remote.sessionRateType) ?? .fixed, sessionRate: remote.sessionRate, sessionRatePercent: remote.sessionRatePercent)
+                        t.id = remoteId
+                        t.branchId = remote.branchId
+                        t.inviteCode = remote.inviteCode
+                        newTrainers.append(t)
+                        trainerById[remoteId] = t
+                    }
+                }
+            }
+
             var newSessions: [TrainingGymSession] = []
             for remote in remoteSessions {
                 guard let remoteId = remote.id else { continue }

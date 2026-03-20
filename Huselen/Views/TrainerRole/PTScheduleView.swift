@@ -59,6 +59,9 @@ private enum PTSessionGroup: Identifiable {
 
 struct PTScheduleView: View {
     @Environment(DataSyncManager.self) private var syncManager
+    @Environment(AuthManager.self) private var authManager
+
+    @State private var showAddSession = false
 
     private var allSessions: [TrainingGymSession] {
         syncManager.sessions.sorted { $0.scheduledDate < $1.scheduledDate }
@@ -201,6 +204,18 @@ struct PTScheduleView: View {
             .navigationTitle("Lịch tập")
             .refreshable {
                 await syncManager.refresh()
+            }
+            .toolbar {
+                if authManager.isFreelancePT {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button { showAddSession = true } label: {
+                            Label("Thêm", systemImage: "plus")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showAddSession) {
+                FreelanceAddSessionSheet(selectedDate: selectedDate)
             }
             .profileToolbar()
         }

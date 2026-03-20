@@ -17,6 +17,7 @@ final class Trainer: Identifiable, Equatable, Hashable {
     var sessionRatePercent: Double = 0
     var branchId: UUID?
     var branch: GymBranch?
+    var inviteCode: String?
 
     var sessions: [TrainingGymSession] = []
     var purchases: [PackagePurchase] = []

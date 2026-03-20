@@ -8,6 +8,35 @@ enum UserRole: String, Codable {
     case client
 }
 
+private struct ProfileResetUpdate: Encodable {
+    let gymId: String? = nil
+    let isFreelance: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case gymId = "gym_id"
+        case isFreelance = "is_freelance"
+    }
+}
+
+private struct ProfileFreelanceUpdate: Encodable {
+    let isFreelance: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isFreelance = "is_freelance"
+    }
+}
+
+private struct ProfileSignUpUpdate: Encodable {
+    let role: String
+    let email: String
+    let isFreelance: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case role, email
+        case isFreelance = "is_freelance"
+    }
+}
+
 struct UserProfile: Codable {
     let id: UUID
     let fullName: String?
@@ -17,6 +46,7 @@ struct UserProfile: Codable {
     let createdAt: Date?
     let updatedAt: Date?
     let gymId: UUID?
+    let isFreelance: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -27,6 +57,7 @@ struct UserProfile: Codable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case gymId = "gym_id"
+        case isFreelance = "is_freelance"
     }
 }
 
@@ -41,7 +72,11 @@ final class AuthManager {
     var currentGym: Gym?
 
     var needsGymSetup: Bool {
-        isAuthenticated && !isLoading && userProfile?.gymId == nil
+        isAuthenticated && !isLoading && userProfile?.gymId == nil && !(userProfile?.isFreelance ?? false)
+    }
+
+    var isFreelancePT: Bool {
+        userRole == .trainer && (userProfile?.isFreelance ?? false)
     }
 
     private nonisolated(unsafe) var authListenerTask: Task<Void, Never>?
@@ -227,7 +262,63 @@ final class AuthManager {
         }
     }
 
-    func signUp(email: String, password: String, fullName: String, role: UserRole = .owner) async {
+    /// Client/Trainer leaves current gym or freelance PT.
+    /// Resets gym_id and is_freelance so needsGymSetup becomes true again → shows GymJoinView.
+    func leaveCurrentGymOrPT() async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        errorMessage = nil
+        do {
+            let reset = ProfileResetUpdate()
+            try await supabase
+                .from("profiles")
+                .update(reset)
+                .eq("id", value: userId.uuidString)
+                .execute()
+            currentGym = nil
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Lỗi: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Client joins a freelance PT by their invite code.
+    /// Uses a database function (security definer) to bypass RLS for client record creation.
+    func joinFreelancePT(inviteCode: String) async -> Bool {
+        errorMessage = nil
+        do {
+            try await supabase.rpc(
+                "join_freelance_pt",
+                params: ["p_invite_code": inviteCode.trimmingCharacters(in: .whitespaces)]
+            ).execute()
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Mã mời PT không hợp lệ"
+            return false
+        }
+    }
+
+    /// Client skips gym/PT setup to use the app independently.
+    func skipGymSetup() async -> Bool {
+        guard let userId = currentUser?.id else { return false }
+        do {
+            let update = ProfileFreelanceUpdate(isFreelance: true)
+            try await supabase
+                .from("profiles")
+                .update(update)
+                .eq("id", value: userId.uuidString)
+                .execute()
+            await fetchProfile()
+            return true
+        } catch {
+            errorMessage = "Lỗi: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func signUp(email: String, password: String, fullName: String, role: UserRole = .owner, isFreelance: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
@@ -239,10 +330,11 @@ final class AuthManager {
             currentUser = response.user
             isAuthenticated = response.session != nil
             if isAuthenticated {
-                // Update profile role and email
+                // Update profile role, email, and freelance flag
+                let profileUpdate = ProfileSignUpUpdate(role: role.rawValue, email: email, isFreelance: isFreelance)
                 try await supabase
                     .from("profiles")
-                    .update(["role": role.rawValue, "email": email])
+                    .update(profileUpdate)
                     .eq("id", value: response.user.id.uuidString)
                     .execute()
                 await fetchProfile()
