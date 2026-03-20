@@ -25,12 +25,14 @@ final class WiFiChecker: NSObject, CLLocationManagerDelegate {
 
     func fetchCurrentSSID() async {
         #if os(iOS)
-        let status = locationManager?.authorizationStatus ?? .notDetermined
-        if status == .notDetermined {
+        let initialStatus = locationManager?.authorizationStatus ?? .notDetermined
+        if initialStatus == .notDetermined {
             requestLocationPermission()
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .seconds(1.5))
         }
 
+        // Re-read after potential permission grant
+        let status = locationManager?.authorizationStatus ?? .notDetermined
         guard status == .authorizedWhenInUse || status == .authorizedAlways else {
             currentSSID = nil
             return

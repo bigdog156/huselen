@@ -1,148 +1,50 @@
 import SwiftUI
 
+// MARK: - ClientDetailView
+
 struct ClientDetailView: View {
     var client: Client
     @State private var showingEditForm = false
     @State private var showingPurchaseForm = false
     @State private var editingPurchase: PackagePurchase?
 
+    private var activePurchases: [PackagePurchase] {
+        client.purchases.filter { !$0.isExpired && !$0.isFullyUsed }
+    }
+
+    private var expiredPurchases: [PackagePurchase] {
+        client.purchases.filter { $0.isExpired || $0.isFullyUsed }
+    }
+
+    private var completedSessionsCount: Int {
+        client.sessions.filter { $0.isCompleted }.count
+    }
+
+    private var hasBodyStats: Bool {
+        client.height > 0 || client.weight > 0 || client.bodyFat > 0 || client.muscleMass > 0
+    }
+
     var body: some View {
-        List {
-            Section("Thông tin cá nhân") {
-                LabeledContent("Tên", value: client.name)
-                if !client.phone.isEmpty {
-                    LabeledContent("SĐT", value: client.phone)
-                }
-                if !client.email.isEmpty {
-                    LabeledContent("Email", value: client.email)
-                }
+        ScrollView {
+            VStack(spacing: 16) {
+                profileHeaderCard
+                trainingStatsRow
+                if !client.goal.isEmpty { goalCard }
+                if hasBodyStats { bodyStatsSection }
+                activePackagesSection
+                if !expiredPurchases.isEmpty { expiredPackagesSection }
             }
-
-            Section("Chỉ số cơ thể") {
-                if client.height > 0 { LabeledContent("Chiều cao", value: String(format: "%.1f cm", client.height)) }
-                if client.weight > 0 { LabeledContent("Cân nặng", value: String(format: "%.1f kg", client.weight)) }
-                if client.bodyFat > 0 { LabeledContent("Tỷ lệ mỡ", value: String(format: "%.1f%%", client.bodyFat)) }
-                if client.muscleMass > 0 { LabeledContent("Khối lượng cơ", value: String(format: "%.1f kg", client.muscleMass)) }
-                if client.height == 0 && client.weight == 0 && client.bodyFat == 0 && client.muscleMass == 0 {
-                    Text("Chưa cập nhật")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Số đo cơ thể") {
-                if client.neck > 0 { LabeledContent("Cổ", value: String(format: "%.1f cm", client.neck)) }
-                if client.shoulder > 0 { LabeledContent("Vai", value: String(format: "%.1f cm", client.shoulder)) }
-                if client.arm > 0 { LabeledContent("Cánh tay", value: String(format: "%.1f cm", client.arm)) }
-                if client.chest > 0 { LabeledContent("Vòng 1", value: String(format: "%.1f cm", client.chest)) }
-                if client.waist > 0 { LabeledContent("Eo", value: String(format: "%.1f cm", client.waist)) }
-                if client.hip > 0 { LabeledContent("Hông", value: String(format: "%.1f cm", client.hip)) }
-                if client.thigh > 0 { LabeledContent("Đùi", value: String(format: "%.1f cm", client.thigh)) }
-                if client.calf > 0 { LabeledContent("Bắp chân", value: String(format: "%.1f cm", client.calf)) }
-                if client.lowerHip > 0 { LabeledContent("Vòng 3", value: String(format: "%.1f cm", client.lowerHip)) }
-                let hasNoMeasurements = client.neck == 0 && client.shoulder == 0 && client.arm == 0 && client.chest == 0 && client.waist == 0 && client.hip == 0 && client.thigh == 0 && client.calf == 0 && client.lowerHip == 0
-                if hasNoMeasurements {
-                    Text("Chưa cập nhật")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if !client.goal.isEmpty {
-                Section("Mục tiêu") {
-                    Text(client.goal)
-                }
-            }
-
-            Section {
-                HStack {
-                    Text("Gói PT đã mua")
-                        .font(.headline)
-                    Spacer()
-                    Button(action: { showingPurchaseForm = true }) {
-                        Label("Mua gói", systemImage: "plus.circle.fill")
-                            .font(.subheadline)
-                    }
-                }
-
-                let activePurchases = client.purchases.filter { !$0.isExpired && !$0.isFullyUsed }
-                if activePurchases.isEmpty {
-                    Text("Chưa có gói PT nào")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(activePurchases) { purchase in
-                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(purchase.package?.name ?? "Gói PT")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    Spacer()
-                                    Text(formatVND(purchase.price))
-                                        .font(.caption)
-                                        .foregroundStyle(.green)
-                                }
-                                HStack {
-                                    Text("PT: \(purchase.trainer?.name ?? "N/A")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("Còn \(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
-                                        .font(.caption)
-                                        .foregroundStyle(purchase.remainingSessions > 0 ? .blue : .red)
-                                }
-                                ProgressView(value: Double(purchase.usedSessions), total: Double(purchase.totalSessions))
-                                    .tint(purchase.remainingSessions > 3 ? .green : .orange)
-                                Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .contextMenu {
-                            Button {
-                                editingPurchase = purchase
-                            } label: {
-                                Label("Chỉnh sửa gói", systemImage: "pencil")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Expired/used packages
-            let expiredPurchases = client.purchases.filter { $0.isExpired || $0.isFullyUsed }
-            if !expiredPurchases.isEmpty {
-                Section("Gói đã kết thúc") {
-                    ForEach(expiredPurchases) { purchase in
-                        NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(purchase.package?.name ?? "Gói PT")
-                                        .font(.subheadline)
-                                    Text("Mua: \(purchase.purchaseDate, format: .dateTime.day().month().year())")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if purchase.isFullyUsed {
-                                    Text("Đã hết buổi")
-                                        .font(.caption)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Text("Hết hạn")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-                        }
-                        .opacity(0.6)
-                    }
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(client.name)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Sửa") { showingEditForm = true }
+                Button("Sua") { showingEditForm = true }
+                    .foregroundStyle(Theme.Colors.softOrange)
             }
         }
         .sheet(isPresented: $showingEditForm) {
@@ -154,5 +56,369 @@ struct ClientDetailView: View {
         .sheet(item: $editingPurchase) { purchase in
             PurchaseEditView(purchase: purchase)
         }
+    }
+}
+
+// MARK: - Subviews
+
+private extension ClientDetailView {
+
+    // MARK: Profile Header Card
+
+    var profileHeaderCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                FitAvatarCircle(
+                    name: client.name,
+                    color: Theme.Colors.mintGreen,
+                    size: 56
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(client.name)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.fitTextPrimary)
+
+                    if !client.goal.isEmpty {
+                        Text(client.goal)
+                            .font(Theme.Fonts.caption())
+                            .foregroundStyle(Color.fitTextSecondary)
+                            .lineLimit(1)
+                    }
+
+                    if !client.phone.isEmpty {
+                        Label(client.phone, systemImage: "phone.fill")
+                            .font(Theme.Fonts.caption())
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+
+                    if !client.email.isEmpty {
+                        Label(client.email, systemImage: "envelope.fill")
+                            .font(Theme.Fonts.caption())
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+                }
+
+                Spacer()
+            }
+
+            // Body stat chips (only non-zero values)
+            let chips = bodyStatChips
+            if !chips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(chips, id: \.label) { chip in
+                            HStack(spacing: 4) {
+                                Text(chip.label)
+                                    .foregroundStyle(Color.fitTextTertiary)
+                                Text(chip.value)
+                                    .foregroundStyle(Color.fitTextPrimary)
+                            }
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color.fitCard)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+        )
+    }
+
+    // MARK: Training Stats Row
+
+    var trainingStatsRow: some View {
+        HStack(spacing: 10) {
+            miniStatCard(
+                title: "Tong buoi",
+                value: "\(client.sessions.count)",
+                color: Color.fitIndigo
+            )
+            miniStatCard(
+                title: "Hoan thanh",
+                value: "\(completedSessionsCount)",
+                color: Color.fitGreen
+            )
+            miniStatCard(
+                title: "Con lai",
+                value: "\(client.remainingSessions)",
+                color: Theme.Colors.mintGreen
+            )
+        }
+    }
+
+    func miniStatCard(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.fitTextSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+        )
+    }
+
+    // MARK: Goal Card
+
+    var goalCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "target")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.Colors.warmYellow)
+            Text(client.goal)
+                .font(Theme.Fonts.subheadline())
+                .foregroundStyle(Color.fitTextPrimary)
+            Spacer()
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Theme.Colors.warmYellow.opacity(0.08))
+        )
+    }
+
+    // MARK: Body Stats Section
+
+    var bodyStatsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FitSectionHeader(title: "Chi so co the", icon: "figure.stand")
+
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 10),
+                GridItem(.flexible(), spacing: 10)
+            ], spacing: 10) {
+                if client.height > 0 {
+                    bodyStatCell(label: "Chieu cao", value: String(format: "%.1f cm", client.height))
+                }
+                if client.weight > 0 {
+                    bodyStatCell(label: "Can nang", value: String(format: "%.1f kg", client.weight))
+                }
+                if client.bodyFat > 0 {
+                    bodyStatCell(label: "Ty le mo", value: String(format: "%.1f%%", client.bodyFat))
+                }
+                if client.muscleMass > 0 {
+                    bodyStatCell(label: "Co bap", value: String(format: "%.1f kg", client.muscleMass))
+                }
+            }
+        }
+    }
+
+    func bodyStatCell(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.fitTextTertiary)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.fitTextPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.fitCard)
+        )
+    }
+
+    // MARK: Active Packages Section
+
+    var activePackagesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Text("Goi PT dang su dung")
+                        .font(Theme.Fonts.headline())
+                        .foregroundStyle(Color.fitTextPrimary)
+
+                    if !activePurchases.isEmpty {
+                        Text("\(activePurchases.count)")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Theme.Colors.mintGreen)
+                            )
+                    }
+                }
+
+                Spacer()
+
+                Button(action: { showingPurchaseForm = true }) {
+                    Text("Mua goi")
+                        .font(Theme.Fonts.caption())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule()
+                                .fill(Theme.Colors.mintGreen.gradient)
+                        )
+                }
+            }
+
+            if activePurchases.isEmpty {
+                FitEmptyState(
+                    icon: "ticket",
+                    title: "Chua co goi PT",
+                    subtitle: "Mua goi de bat dau tap luyen"
+                )
+            } else {
+                ForEach(activePurchases) { purchase in
+                    NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                        activePurchaseCard(purchase: purchase)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            editingPurchase = purchase
+                        } label: {
+                            Label("Chinh sua goi", systemImage: "pencil")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func activePurchaseCard(purchase: PackagePurchase) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Row 1: package name + price
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "ticket.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.Colors.mintGreen)
+                    Text(purchase.package?.name ?? "Goi PT")
+                        .font(Theme.Fonts.subheadline())
+                        .fontWeight(.bold)
+                        .foregroundStyle(Color.fitTextPrimary)
+                }
+                Spacer()
+                Text(formatVND(purchase.price))
+                    .font(Theme.Fonts.subheadline())
+                    .foregroundStyle(Color.fitGreen)
+            }
+
+            // Row 2: trainer + remaining badge
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.fitTextTertiary)
+                    Text("PT: \(purchase.trainer?.name ?? "N/A")")
+                        .font(Theme.Fonts.caption())
+                        .foregroundStyle(Color.fitTextSecondary)
+                }
+                Spacer()
+                Text("Con \(purchase.remainingSessions)/\(purchase.totalSessions) buoi")
+                    .font(Theme.Fonts.caption())
+                    .foregroundStyle(
+                        purchase.remainingSessions > 0 ? Color.fitGreen : Color.fitCoral
+                    )
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(
+                                (purchase.remainingSessions > 0 ? Color.fitGreen : Color.fitCoral)
+                                    .opacity(0.1)
+                            )
+                    )
+            }
+
+            // Progress bar
+            FitProgressBar(
+                value: Double(purchase.usedSessions),
+                total: Double(purchase.totalSessions),
+                color: purchase.remainingSessions > 3 ? Color.fitGreen : Color.fitCoral
+            )
+
+            // Expiry date
+            Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.fitTextTertiary)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+        )
+    }
+
+    // MARK: Expired Packages Section
+
+    var expiredPackagesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FitSectionHeader(title: "Goi da ket thuc", icon: "clock.arrow.circlepath")
+
+            ForEach(expiredPurchases) { purchase in
+                NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(purchase.package?.name ?? "Goi PT")
+                                .font(Theme.Fonts.subheadline())
+                                .foregroundStyle(Color.fitTextPrimary)
+                            Text("Mua: \(purchase.purchaseDate, format: .dateTime.day().month().year())")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color.fitTextTertiary)
+                        }
+                        Spacer()
+                        if purchase.isFullyUsed {
+                            FitBadge(text: "Da het buoi", color: Color.fitGreen)
+                        } else {
+                            FitBadge(text: "Het han", color: Color.fitCoral)
+                        }
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(.systemBackground))
+                    )
+                }
+                .buttonStyle(.plain)
+                .opacity(0.5)
+            }
+        }
+    }
+
+    // MARK: Helpers
+
+    struct BodyChip: Hashable {
+        let label: String
+        let value: String
+    }
+
+    var bodyStatChips: [BodyChip] {
+        var chips: [BodyChip] = []
+        if client.weight > 0 {
+            chips.append(BodyChip(label: "CN:", value: String(format: "%.0f kg", client.weight)))
+        }
+        if client.bodyFat > 0 {
+            chips.append(BodyChip(label: "Mo:", value: String(format: "%.0f%%", client.bodyFat)))
+        }
+        if client.muscleMass > 0 {
+            chips.append(BodyChip(label: "Co:", value: String(format: "%.0f kg", client.muscleMass)))
+        }
+        return chips
     }
 }

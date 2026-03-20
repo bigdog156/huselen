@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 struct MyBodyStatsView: View {
     @Environment(DataSyncManager.self) private var syncManager
@@ -20,6 +21,20 @@ struct MyBodyStatsView: View {
 
     private var recentLogs: [BodyStatLog] {
         syncManager.bodyStatLogs.suffix(10).reversed()
+    }
+
+    private var last30DaysWeightLogs: [BodyStatLog] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        return syncManager.bodyStatLogs
+            .filter { $0.loggedAt >= cutoff && $0.weight != nil }
+            .sorted { $0.loggedAt < $1.loggedAt }
+    }
+
+    private var last30DaysBodyFatLogs: [BodyStatLog] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        return syncManager.bodyStatLogs
+            .filter { $0.loggedAt >= cutoff && $0.bodyFat != nil }
+            .sorted { $0.loggedAt < $1.loggedAt }
     }
 
     var body: some View {
@@ -52,6 +67,9 @@ struct MyBodyStatsView: View {
                             weightHistorySection
                                 .padding(.horizontal, 24)
                         }
+
+                        bodyFatChartSection
+                            .padding(.horizontal, 24)
 
                         progressPhotosSection
                             .padding(.horizontal, 24)
@@ -334,6 +352,64 @@ struct MyBodyStatsView: View {
         )
     }
 
+    // MARK: - Weight Trend Chart
+
+    private var weightTrendChart: some View {
+        Group {
+            if last30DaysWeightLogs.count >= 2 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Xu hướng cân nặng (30 ngày)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.fitTextTertiary)
+
+                    Chart(last30DaysWeightLogs, id: \.id) { log in
+                        if let weight = log.weight {
+                            LineMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Cân nặng", weight)
+                            )
+                            .foregroundStyle(Color.fitIndigo)
+                            .interpolationMethod(.catmullRom)
+
+                            AreaMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Cân nặng", weight)
+                            )
+                            .foregroundStyle(Color.fitIndigo.opacity(0.1))
+                            .interpolationMethod(.catmullRom)
+
+                            PointMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Cân nặng", weight)
+                            )
+                            .foregroundStyle(Color.fitIndigo)
+                            .symbolSize(24)
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .automatic) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { _ in
+                            AxisGridLine()
+                            AxisValueLabel()
+                        }
+                    }
+                    .frame(height: 140)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(.systemBackground))
+                        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                )
+            }
+        }
+    }
+
     // MARK: - Weight History Section
 
     private var weightHistorySection: some View {
@@ -351,6 +427,8 @@ struct MyBodyStatsView: View {
                         .foregroundStyle(Color.fitGreen)
                 }
             }
+
+            weightTrendChart
 
             let logsWithWeight = recentLogs.filter { $0.weight != nil }
 
@@ -411,6 +489,64 @@ struct MyBodyStatsView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    // MARK: - Body Fat Chart Section
+
+    private var bodyFatChartSection: some View {
+        Group {
+            if last30DaysBodyFatLogs.count >= 2 {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Xu hướng mỡ cơ thể (30 ngày)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.fitTextSecondary)
+
+                    Chart(last30DaysBodyFatLogs, id: \.id) { log in
+                        if let bodyFat = log.bodyFat {
+                            LineMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Mỡ cơ thể", bodyFat)
+                            )
+                            .foregroundStyle(Color.fitOrange)
+                            .interpolationMethod(.catmullRom)
+
+                            AreaMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Mỡ cơ thể", bodyFat)
+                            )
+                            .foregroundStyle(Color.fitOrange.opacity(0.1))
+                            .interpolationMethod(.catmullRom)
+
+                            PointMark(
+                                x: .value("Date", log.loggedAt),
+                                y: .value("Mỡ cơ thể", bodyFat)
+                            )
+                            .foregroundStyle(Color.fitOrange)
+                            .symbolSize(24)
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .automatic) { _ in
+                            AxisGridLine()
+                            AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { _ in
+                            AxisGridLine()
+                            AxisValueLabel()
+                        }
+                    }
+                    .frame(height: 140)
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Progress Photos Section

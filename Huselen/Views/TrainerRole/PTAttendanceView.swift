@@ -39,6 +39,7 @@ struct PTAttendanceView: View {
 
     @State private var notes = ""
     @State private var isProcessing = false
+    @FocusState private var notesFocused: Bool
     @State private var wifiStatus: WiFiStatus = .checking
     @State private var showWiFiAlert = false
 
@@ -120,6 +121,7 @@ struct PTAttendanceView: View {
                 }
             }
             .navigationTitle("Chấm công")
+            .scrollDismissesKeyboard(.interactively)
             .refreshable {
                 await syncManager.refresh()
                 await checkWiFi()
@@ -178,14 +180,6 @@ struct PTAttendanceView: View {
         wifiStatus = ok ? .connected : .notConnected
     }
 
-    private func verifyWiFiAndProceed(_ action: @escaping () -> Void) {
-        if canCheckInOut {
-            action()
-        } else {
-            showWiFiAlert = true
-        }
-    }
-
     // MARK: - Checked In Section
 
     @ViewBuilder
@@ -208,19 +202,30 @@ struct PTAttendanceView: View {
             }
 
             Button {
-                verifyWiFiAndProceed {
-                    Task {
-                        isProcessing = true
-                        await syncManager.checkOut(active)
+                guard !isProcessing else { return }
+                isProcessing = true           // ← set immediately
+                Task { @MainActor in
+                    await checkWiFi()         // ← re-check at tap time
+                    guard canCheckInOut else {
                         isProcessing = false
+                        showWiFiAlert = true
+                        return
                     }
+                    await syncManager.checkOut(active)
+                    isProcessing = false
                 }
             } label: {
-                Label("Check-out", systemImage: "arrow.left.circle.fill")
-                    .frame(maxWidth: .infinity)
+                Group {
+                    if isProcessing {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("Check-out", systemImage: "arrow.left.circle.fill")
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(CuteButtonStyle(color: .red))
-            .disabled(isProcessing)
+            .disabled(isProcessing || !canCheckInOut)
         }
         .padding(.vertical, 8)
     }
@@ -245,23 +250,34 @@ struct PTAttendanceView: View {
 
             TextField("Ghi chú (tuỳ chọn)", text: $notes)
                 .textFieldStyle(.roundedBorder)
+                .focused($notesFocused)
 
             Button {
-                guard let trainer = currentTrainer else { return }
-                verifyWiFiAndProceed {
-                    Task {
-                        isProcessing = true
-                        await syncManager.checkIn(trainer: trainer, notes: notes)
-                        notes = ""
+                guard !isProcessing, let trainer = currentTrainer else { return }
+                isProcessing = true           // ← set immediately, blocks double-tap
+                Task { @MainActor in
+                    await checkWiFi()         // ← re-check at tap time, not load time
+                    guard canCheckInOut else {
                         isProcessing = false
+                        showWiFiAlert = true
+                        return
                     }
+                    await syncManager.checkIn(trainer: trainer, notes: notes)
+                    notes = ""
+                    isProcessing = false
                 }
             } label: {
-                Label("Check-in", systemImage: "arrow.right.circle.fill")
-                    .frame(maxWidth: .infinity)
+                Group {
+                    if isProcessing {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label("Check-in", systemImage: "arrow.right.circle.fill")
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(CuteButtonStyle(color: .green))
-            .disabled(isProcessing || currentTrainer == nil)
+            .disabled(isProcessing || currentTrainer == nil || !canCheckInOut)
         }
         .padding(.vertical, 8)
     }

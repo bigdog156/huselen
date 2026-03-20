@@ -70,6 +70,8 @@ struct ClientCheckInView: View {
                 }
 
                 statsRowView
+                miniCalendarSection
+                milestoneBadgesSection
                 historySection
             }
             .padding(.horizontal, 24)
@@ -338,6 +340,116 @@ struct ClientCheckInView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(bg))
+    }
+
+    // MARK: - Mini Calendar
+
+    private var checkInDates: Set<Int> {
+        let cal = Calendar.current
+        return Set(syncManager.sessions.filter { session in
+            (session.clientCheckInPhotoURL != nil || session.isCompleted) &&
+            cal.isDate(session.scheduledDate, equalTo: Date(), toGranularity: .month)
+        }.map { cal.component(.day, from: $0.scheduledDate) })
+    }
+
+    private var miniCalendarSection: some View {
+        let cal = Calendar.current
+        let today = Date()
+        let todayDay = cal.component(.day, from: today)
+        let range = cal.range(of: .day, in: .month, for: today)!
+        let firstWeekday = cal.component(.weekday, from: cal.date(from: cal.dateComponents([.year, .month], from: today))!)
+        // Adjust so Monday=1 ... Sunday=7 -> Vietnamese week starts Monday
+        // Calendar weekday: 1=CN, 2=T2 ... 7=T7
+        let leadingSpaces = (firstWeekday - 1 + 7) % 7  // CN=0 offset when starting from CN
+        let weekdays = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
+        let monthFormatter: DateFormatter = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "vi_VN")
+            f.dateFormat = "MMMM yyyy"
+            return f
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(monthFormatter.string(from: today).capitalized)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.fitTextPrimary)
+
+            // Weekday headers
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
+                ForEach(weekdays, id: \.self) { day in
+                    Text(day)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.fitTextTertiary)
+                        .frame(maxWidth: .infinity)
+                }
+
+                // Leading empty cells
+                ForEach(0..<leadingSpaces, id: \.self) { _ in
+                    Color.clear.frame(height: 32)
+                }
+
+                // Day cells
+                ForEach(Array(range), id: \.self) { day in
+                    ZStack {
+                        if checkInDates.contains(day) {
+                            Circle()
+                                .fill(Color.fitGreen)
+                                .frame(width: 30, height: 30)
+                        }
+
+                        if day == todayDay && !checkInDates.contains(day) {
+                            Circle()
+                                .strokeBorder(Color.fitGreen, lineWidth: 2)
+                                .frame(width: 30, height: 30)
+                        }
+
+                        Text("\(day)")
+                            .font(.system(size: 13, weight: checkInDates.contains(day) ? .bold : .medium))
+                            .foregroundStyle(
+                                checkInDates.contains(day)
+                                    ? .white
+                                    : (day == todayDay ? Color.fitGreen : Color.fitTextPrimary)
+                            )
+                    }
+                    .frame(height: 32)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+        )
+    }
+
+    // MARK: - Milestone Badges
+
+    private var milestoneBadgesSection: some View {
+        let milestones: [(Int, String)] = [
+            (7, "🏅 7 ngày liên tiếp!"),
+            (30, "🥈 30 ngày liên tiếp!"),
+            (100, "🥇 100 ngày liên tiếp!")
+        ]
+        let achieved = milestones.filter { streakDays >= $0.0 }
+
+        return Group {
+            if !achieved.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(achieved, id: \.0) { _, label in
+                        Text(label)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.fitTextPrimary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(Color.fitGreenSoft)
+                            )
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - History Section

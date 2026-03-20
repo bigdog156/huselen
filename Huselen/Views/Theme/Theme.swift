@@ -66,6 +66,7 @@ struct CuteCardModifier: ViewModifier {
 struct CuteButtonStyle: ButtonStyle {
     let color: Color
     let isFullWidth: Bool
+    @Environment(\.isEnabled) private var isEnabled
 
     init(color: Color = Theme.Colors.warmYellow, isFullWidth: Bool = true) {
         self.color = color
@@ -73,6 +74,7 @@ struct CuteButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
+        let effectiveColor = isEnabled ? color : Color(.systemGray4)
         configuration.label
             .font(Theme.Fonts.headline())
             .foregroundStyle(.white)
@@ -81,10 +83,10 @@ struct CuteButtonStyle: ButtonStyle {
             .padding(.horizontal, isFullWidth ? 0 : 24)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
-                    .fill(color.gradient)
-                    .shadow(color: color.opacity(0.35), radius: 8, x: 0, y: 4)
+                    .fill(effectiveColor.gradient)
+                    .shadow(color: effectiveColor.opacity(0.35), radius: 8, x: 0, y: 4)
             )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

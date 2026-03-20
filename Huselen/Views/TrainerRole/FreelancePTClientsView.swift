@@ -15,44 +15,11 @@ struct FreelancePTClientsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(clients) { client in
-                    NavigationLink(destination: FreelanceClientDetailView(client: client)) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(Theme.Colors.softOrange)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(client.name)
-                                    .font(.headline)
-                                if !client.goal.isEmpty {
-                                    Text(client.goal)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-
-                            Spacer()
-
-                            if !client.phone.isEmpty {
-                                Text(client.phone)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                .onDelete(perform: deleteClients)
-            }
-            .overlay {
+            Group {
                 if clients.isEmpty {
-                    ContentUnavailableView(
-                        "Chưa có học viên",
-                        systemImage: "person.crop.circle.badge.plus",
-                        description: Text("Nhấn + để thêm học viên mới")
-                    )
+                    emptyStateView
+                } else {
+                    clientListView
                 }
             }
             .navigationTitle("Học viên")
@@ -73,11 +40,146 @@ struct FreelancePTClientsView: View {
         }
     }
 
-    private func deleteClients(offsets: IndexSet) {
-        for index in offsets {
-            let client = clients[index]
-            Task { await syncManager.deleteClient(client) }
+    // MARK: - Initials
+
+    private func initials(for name: String) -> String {
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return String((parts.first?.prefix(1) ?? "") + (parts.last?.prefix(1) ?? "")).uppercased()
         }
+        return String(name.prefix(2)).uppercased()
+    }
+}
+
+// MARK: - Subviews
+
+private extension FreelancePTClientsView {
+
+    var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 56))
+                .foregroundStyle(Theme.Colors.softOrange.opacity(0.6))
+            Text("Chưa có học viên")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.fitTextPrimary)
+            Text("Nhấn + để thêm học viên mới")
+                .font(.subheadline)
+                .foregroundStyle(Color.fitTextSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    var clientListView: some View {
+        List {
+            ForEach(clients) { client in
+                NavigationLink(destination: FreelanceClientDetailView(client: client)) {
+                    clientCard(client)
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        Task { await syncManager.deleteClient(client) }
+                    } label: {
+                        Label("Xoá", systemImage: "trash")
+                    }
+                    .tint(.red)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .background(Color(.systemGroupedBackground))
+        .scrollContentBackground(.hidden)
+    }
+
+    func clientCard(_ client: Client) -> some View {
+        HStack(spacing: 14) {
+            // Avatar initials circle
+            Text(initials(for: client.name))
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Theme.Colors.softOrange, Theme.Colors.softOrange.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+
+            // Center: name, goal, body stat chips
+            VStack(alignment: .leading, spacing: 6) {
+                Text(client.name)
+                    .font(.headline)
+                    .foregroundStyle(Color.fitTextPrimary)
+
+                if !client.goal.isEmpty {
+                    Text(client.goal)
+                        .font(.caption)
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .lineLimit(1)
+                }
+
+                // Body stat chips
+                if client.weight > 0 || client.bodyFat > 0 {
+                    HStack(spacing: 6) {
+                        if client.weight > 0 {
+                            statChip(
+                                text: String(format: "%.1f kg", client.weight),
+                                color: Color.fitIndigo
+                            )
+                        }
+                        if client.bodyFat > 0 {
+                            statChip(
+                                text: String(format: "%.1f%%", client.bodyFat),
+                                color: Color.fitOrange
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Remaining sessions badge
+            Text("\(client.remainingSessions)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(client.remainingSessions > 0 ? Color.fitGreen : Color.fitCoral)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(
+                            (client.remainingSessions > 0 ? Color.fitGreen : Color.fitCoral)
+                                .opacity(0.12)
+                        )
+                )
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.fitTextTertiary)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+        )
+    }
+
+    func statChip(text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.1), in: Capsule())
     }
 }
 
