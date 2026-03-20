@@ -23,7 +23,7 @@ struct ClientTabView: View {
 
             MealLogView(userId: authManager.currentUser?.id.uuidString ?? "")
                 .tabItem {
-                    Label("Meal Log", systemImage: "fork.knife")
+                    Label("Nhật ký ăn", systemImage: "fork.knife")
                 }
 
             MyBodyStatsView()

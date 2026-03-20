@@ -10,6 +10,7 @@ struct ClientCheckInView: View {
     @State private var showSuccess = false
     @State private var checkedInSession: TrainingGymSession?
     @State private var pendingSession: TrainingGymSession?
+    @State private var showHistory = false
     // MARK: - Session helpers
 
     private var todaySessions: [TrainingGymSession] {
@@ -100,6 +101,9 @@ struct ClientCheckInView: View {
         }
         .overlay { if showSuccess { successOverlay } }
         .overlay { if isProcessing { processingOverlay } }
+        .sheet(isPresented: $showHistory) {
+            ClientCheckInHistoryView()
+        }
     }
 
     // MARK: - Header
@@ -346,7 +350,7 @@ struct ClientCheckInView: View {
                     .foregroundStyle(Color.fitTextPrimary)
                 Spacer()
                 Button {
-                    // TODO: Navigate to full check-in history
+                    showHistory = true
                 } label: {
                     Text("Xem tất cả →")
                         .font(.system(size: 12, weight: .semibold))

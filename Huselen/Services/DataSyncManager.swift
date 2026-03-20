@@ -249,6 +249,7 @@ final class DataSyncManager {
     var selectedBranchId: UUID?
     var bodyStatLogs: [BodyStatLog] = []
     var progressPhotos: [ProgressPhoto] = []
+    var workoutExercises: [String: [ExerciseEntry]] = [:]
 
     func refresh() async {
         await fetchAll(role: lastRole, isFreelance: isFreelance)
@@ -1591,5 +1592,77 @@ final class DataSyncManager {
 
     func activeAttendance(for trainer: Trainer) -> TrainerAttendance? {
         attendances.first { $0.trainer?.id == trainer.id && $0.checkOutTime == nil }
+    }
+
+    // MARK: - Workout Exercises
+
+    func fetchWorkoutExercises(for sessionId: String) async {
+        do {
+            let dtos: [WorkoutExerciseDTO] = try await supabase
+                .from("workout_exercises")
+                .select()
+                .eq("session_id", value: sessionId)
+                .order("order_index")
+                .execute()
+                .value
+            workoutExercises[sessionId] = dtos.map { $0.toEntry() }
+        } catch {
+            errorMessage = "Lỗi tải bài tập: \(error.localizedDescription)"
+        }
+    }
+
+    func saveWorkoutExercises(_ exercises: [ExerciseEntry], for sessionId: String, trainerId: UUID?, clientId: UUID?) async {
+        do {
+            let ownId = try await ownerId()
+            try await supabase
+                .from("workout_exercises")
+                .delete()
+                .eq("session_id", value: sessionId)
+                .execute()
+
+            guard !exercises.isEmpty else {
+                workoutExercises[sessionId] = []
+                return
+            }
+
+            let dtos = exercises.enumerated().map { idx, e in
+                WorkoutExerciseDTO(
+                    id: nil,
+                    sessionId: sessionId,
+                    ownerId: ownId.uuidString,
+                    trainerId: trainerId?.uuidString,
+                    clientId: clientId?.uuidString,
+                    exerciseName: e.exerciseName,
+                    sets: e.sets,
+                    reps: e.reps,
+                    weightKg: e.weightKg,
+                    notes: e.notes,
+                    orderIndex: idx
+                )
+            }
+
+            let results: [WorkoutExerciseDTO] = try await supabase
+                .from("workout_exercises")
+                .insert(dtos)
+                .select()
+                .execute()
+                .value
+            workoutExercises[sessionId] = results.map { $0.toEntry() }
+        } catch {
+            errorMessage = "Lỗi lưu bài tập: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteWorkoutExercise(_ exercise: ExerciseEntry, sessionId: String) async {
+        do {
+            try await supabase
+                .from("workout_exercises")
+                .delete()
+                .eq("id", value: exercise.id)
+                .execute()
+            workoutExercises[sessionId]?.removeAll { $0.id == exercise.id }
+        } catch {
+            errorMessage = "Lỗi xoá bài tập: \(error.localizedDescription)"
+        }
     }
 }
