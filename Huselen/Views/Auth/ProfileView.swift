@@ -194,6 +194,13 @@ struct ProfileView: View {
                     .cuteCard()
                     .padding(.horizontal)
 
+                    // Appearance
+                    VStack(spacing: 0) {
+                        ThemePickerRow()
+                    }
+                    .cuteCard()
+                    .padding(.horizontal)
+
                     // Sign out
                     Button {
                         Task {

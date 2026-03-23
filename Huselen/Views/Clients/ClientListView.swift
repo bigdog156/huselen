@@ -3,10 +3,19 @@ import SwiftUI
 // MARK: - Client Filter
 
 enum ClientFilter: String, CaseIterable {
-    case all = "Tất cả"
-    case active = "Đang hoạt động"
+    case all     = "Tất cả"
+    case active  = "Đang hoạt động"
     case warning = "Sắp hết buổi"
     case expired = "Hết buổi"
+
+    var chipColor: Color {
+        switch self {
+        case .all:     Theme.Colors.mintGreen
+        case .active:  .fitGreen
+        case .warning: .fitOrange
+        case .expired: .fitCoral
+        }
+    }
 }
 
 // MARK: - ClientListView
@@ -25,17 +34,14 @@ struct ClientListView: View {
             list = list.filter { $0.branchId == branchId }
         }
         let sorted = list.sorted { $0.name < $1.name }
-        if searchText.isEmpty {
-            return sorted
-        }
+        guard !searchText.isEmpty else { return sorted }
         return sorted.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 
-    private var displayedClients: [Client] {
-        let base = filteredClients
+    private func applyFilter(_ base: [Client]) -> [Client] {
         switch selectedFilter {
-        case .all: return base
-        case .active: return base.filter { $0.remainingSessions > 3 }
+        case .all:     return base
+        case .active:  return base.filter { $0.remainingSessions > 3 }
         case .warning: return base.filter { $0.remainingSessions > 0 && $0.remainingSessions <= 3 }
         case .expired: return base.filter { $0.remainingSessions == 0 }
         }
@@ -44,13 +50,22 @@ struct ClientListView: View {
     // MARK: - Body
 
     var body: some View {
+        let base = filteredClients
+        let displayed = applyFilter(base)
+        let counts: [ClientFilter: Int] = [
+            .all:     base.count,
+            .active:  base.filter { $0.remainingSessions > 3 }.count,
+            .warning: base.filter { $0.remainingSessions > 0 && $0.remainingSessions <= 3 }.count,
+            .expired: base.filter { $0.remainingSessions == 0 }.count,
+        ]
+
         NavigationStack {
             VStack(spacing: 0) {
-                summaryBanner
-                filterChips
-                clientScrollList
+                summaryBanner(clients: base)
+                filterChips(counts: counts)
+                clientScrollList(displayed)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Học viên")
             .searchable(text: $searchText, prompt: "Tìm học viên...")
             .toolbar {
@@ -63,9 +78,7 @@ struct ClientListView: View {
             .sheet(isPresented: $showingAddForm) {
                 SearchClientView()
             }
-            .refreshable {
-                await syncManager.refresh()
-            }
+
             .profileToolbar()
         }
     }
@@ -77,71 +90,103 @@ private extension ClientListView {
 
     // MARK: Summary Banner
 
-    var summaryBanner: some View {
-        let activePackages = filteredClients.flatMap(\.purchases)
+    func summaryBanner(clients: [Client]) -> some View {
+        let activePackages = clients.lazy
+            .flatMap(\.purchases)
             .filter { !$0.isExpired && !$0.isFullyUsed }
             .count
-        let needsRenewal = filteredClients
+        let needsRenewal = clients.lazy
             .filter { $0.remainingSessions <= 2 && $0.remainingSessions > 0 }
             .count
 
-        return HStack(spacing: 0) {
-            bannerStat(
+        return HStack(spacing: 8) {
+            statCard(
                 icon: "person.2.fill",
-                value: "\(filteredClients.count)",
+                color: Theme.Colors.mintGreen,
+                value: clients.count,
                 label: "học viên"
             )
-            bannerStat(
+            statCard(
                 icon: "ticket.fill",
-                value: "\(activePackages)",
+                color: Theme.Colors.skyBlue,
+                value: activePackages,
                 label: "gói đang dùng"
             )
-            bannerStat(
-                icon: "exclamationmark.circle",
-                value: "\(needsRenewal)",
-                label: "cần gia hạn"
+            statCard(
+                icon: "exclamationmark.triangle.fill",
+                color: .fitCoral,
+                value: needsRenewal,
+                label: "cần gia hạn",
+                pulse: needsRenewal > 0
             )
         }
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Theme.Colors.mintGreen.opacity(0.08))
     }
 
-    func bannerStat(icon: String, value: String, label: String) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Theme.Colors.mintGreen)
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+    func statCard(
+        icon: String,
+        color: Color,
+        value: Int,
+        label: String,
+        pulse: Bool = false
+    ) -> some View {
+        VStack(spacing: 6) {
+            CuteIconCircle(icon: icon, color: color, size: 36)
+                .symbolEffect(.pulse, isActive: pulse)
+
+            Text("\(value)")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.fitTextPrimary)
+                .contentTransition(.numericText())
+
             Text(label)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(Theme.Fonts.caption())
                 .foregroundStyle(Color.fitTextSecondary)
         }
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.small)
+                .fill(color.opacity(0.10))
+        )
     }
 
     // MARK: Filter Chips
 
-    var filterChips: some View {
+    func filterChips(counts: [ClientFilter: Int]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(ClientFilter.allCases, id: \.self) { filter in
                     let isActive = selectedFilter == filter
+                    let count = counts[filter] ?? 0
+
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedFilter = filter
                         }
                     } label: {
-                        Text(filter.rawValue)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(isActive ? .white : Color.fitTextSecondary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(
-                                Capsule()
-                                    .fill(isActive ? Theme.Colors.mintGreen : Color.fitCard)
-                            )
+                        HStack(spacing: 6) {
+                            Text(filter.rawValue)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+
+                            if count > 0 {
+                                Text("\(count)")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule().fill(isActive ? .white.opacity(0.25) : Color.fitCard)
+                                    )
+                                    .foregroundStyle(isActive ? .white : Color.fitTextTertiary)
+                            }
+                        }
+                        .foregroundStyle(isActive ? .white : Color.fitTextSecondary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().fill(isActive ? filter.chipColor.gradient : Color.fitCard.gradient)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -153,27 +198,28 @@ private extension ClientListView {
 
     // MARK: Client Scroll List
 
-    var clientScrollList: some View {
+    func clientScrollList(_ displayed: [Client]) -> some View {
         ScrollView {
-            if displayedClients.isEmpty {
+            if displayed.isEmpty {
                 emptyState
                     .padding(.top, 80)
             } else {
                 LazyVStack(spacing: 14) {
-                    ForEach(displayedClients) { client in
+                    ForEach(displayed) { client in
                         NavigationLink(destination: ClientDetailView(client: client)) {
                             ClientCardView(client: client)
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 Task { await syncManager.deleteClient(client) }
                             } label: {
-                                Label("Xoá", systemImage: "trash")
+                                Label("Xoá", systemImage: "trash.fill")
                             }
                         }
                     }
                 }
+                .animation(.easeInOut(duration: 0.25), value: selectedFilter)
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 .padding(.bottom, 20)
@@ -209,18 +255,15 @@ private extension ClientListView {
 struct ClientCardView: View {
     let client: Client
 
-    private var accentColor: Color {
-        if client.remainingSessions > 3 {
-            return .fitGreen
-        } else if client.remainingSessions > 0 {
-            return .fitOrange
-        } else {
-            return .fitCoral
-        }
-    }
+    // Pre-computed at init — not recalculated on every render pass
+    let activePurchase: PackagePurchase?
+    let accentColor: Color
 
-    private var activePurchase: PackagePurchase? {
-        client.purchases.first(where: { !$0.isExpired && !$0.isFullyUsed })
+    init(client: Client) {
+        self.client = client
+        self.activePurchase = client.purchases.first(where: { !$0.isExpired && !$0.isFullyUsed })
+        let s = client.remainingSessions
+        self.accentColor = s > 3 ? .fitGreen : (s > 0 ? .fitOrange : .fitCoral)
     }
 
     var body: some View {
@@ -228,14 +271,14 @@ struct ClientCardView: View {
             // Left accent bar
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(accentColor)
-                .frame(width: 3)
+                .frame(width: 4)
                 .padding(.vertical, 6)
 
             // Card content
             VStack(alignment: .leading, spacing: 10) {
                 topRow
                 if let purchase = activePurchase {
-                    packageSection(purchase)
+                    progressSection(purchase)
                 }
             }
             .padding(14)
@@ -243,7 +286,7 @@ struct ClientCardView: View {
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.06), radius: 12, y: 5)
+                .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
         )
     }
 }
@@ -253,38 +296,31 @@ struct ClientCardView: View {
 private extension ClientCardView {
 
     var topRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
-                FitAvatarCircle(
-                    name: client.name,
-                    color: accentColor,
-                    size: 50
-                )
+        HStack(alignment: .top, spacing: 12) {
+            FitAvatarCircle(name: client.name, color: accentColor, size: 44)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(client.name)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.fitTextPrimary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(client.name)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.fitTextPrimary)
+                    .lineLimit(1)
 
-                    if !client.goal.isEmpty {
-                        Text(client.goal)
-                            .font(Theme.Fonts.caption())
-                            .foregroundStyle(Color.fitTextSecondary)
-                            .lineLimit(1)
-                    }
+                trainerAndBranchRow
+            }
 
-                    trainerAndBranchRow
-                }
+            Spacer(minLength: 4)
 
-                Spacer(minLength: 4)
-
+            VStack(alignment: .trailing, spacing: 4) {
                 remainingBadge
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.fitTextTertiary)
             }
         }
     }
 
     var trainerAndBranchRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if let trainerName = activePurchase?.trainer?.name {
                 Label("PT: \(trainerName)", systemImage: "figure.strengthtraining.traditional")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -298,82 +334,40 @@ private extension ClientCardView {
                     .foregroundStyle(Color.fitTextSecondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(
-                        Capsule()
-                            .fill(Color.fitCard)
-                    )
+                    .background(Capsule().fill(Color.fitCard))
                     .lineLimit(1)
             }
         }
     }
 
     var remainingBadge: some View {
-        Group {
-            if client.remainingSessions > 3 {
-                badgeCapsule(
-                    text: "\(client.remainingSessions) buổi",
-                    color: .fitGreen
-                )
-            } else if client.remainingSessions > 0 {
-                badgeCapsule(
-                    text: "\(client.remainingSessions) buổi",
-                    color: .fitOrange
-                )
-            } else {
-                badgeCapsule(
-                    text: "Hết buổi",
-                    color: .fitCoral
-                )
-            }
-        }
-    }
+        let s = client.remainingSessions
+        let text = s > 3 ? "\(s) buổi" : (s > 0 ? "\(s) buổi!" : "Hết buổi")
 
-    func badgeCapsule(text: String, color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundStyle(color)
+        return Text(text)
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(accentColor)
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.12))
-            )
+            .padding(.vertical, 6)
+            .background(Capsule().fill(accentColor.opacity(0.12)))
     }
 
-    func packageSection(_ purchase: PackagePurchase) -> some View {
-        VStack(spacing: 6) {
-            HStack {
-                Image(systemName: "ticket.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.Colors.mintGreen)
-                Text(purchase.package?.name ?? "Gói PT")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.fitTextPrimary)
-                    .lineLimit(1)
-                Spacer()
-                Text("\(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(purchase.remainingSessions > 3 ? Color.fitGreen : Color.fitCoral)
-            }
+    func progressSection(_ purchase: PackagePurchase) -> some View {
+        let used = Double(purchase.usedSessions)
+        let total = Double(max(1, purchase.totalSessions))
 
-            ProgressView(
-                value: Double(purchase.usedSessions),
-                total: Double(max(1, purchase.totalSessions))
-            )
-            .tint(purchase.remainingSessions > 3 ? Color.fitGreen : Color.fitCoral)
+        return HStack {
+            ProgressView(value: used, total: total)
+                .tint(accentColor)
+                .scaleEffect(y: 1.5)
+                .clipShape(Capsule())
 
-            HStack {
-                Label(
-                    purchase.expiryDate.formatted(.dateTime.day().month().year()),
-                    systemImage: "clock.fill"
-                )
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(Color.fitTextTertiary)
-                Spacer()
-            }
+            Spacer(minLength: 8)
+
+            Text("\(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.fitTextSecondary)
         }
-        .padding(10)
-        .background(Color.fitCard, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

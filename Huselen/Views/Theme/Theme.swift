@@ -3,45 +3,45 @@ import SwiftUI
 // MARK: - Locket-inspired Cute Theme
 
 enum Theme {
-    // MARK: Colors - Warm, soft pastels
+    // MARK: Colors - Warm, soft pastels with light/dark mode support
     enum Colors {
-        static let primary = Color("ThemePrimary", bundle: nil)
-        static let secondary = Color("ThemeSecondary", bundle: nil)
+        // MARK: Accent Colors (same in both modes — used as brand/action accents)
+        static let warmYellow  = Color(red: 1.0,  green: 0.82, blue: 0.20)
+        static let softPink    = Color(red: 1.0,  green: 0.62, blue: 0.65)
+        static let softOrange  = Color(red: 1.0,  green: 0.68, blue: 0.38)
+        static let mintGreen   = Color(red: 0.56, green: 0.90, blue: 0.70)
+        static let lavender    = Color(red: 0.73, green: 0.65, blue: 0.95)
+        static let skyBlue     = Color(red: 0.55, green: 0.78, blue: 1.00)
+        static let peach       = Color(red: 1.0,  green: 0.78, blue: 0.65)
+        static let cream       = Color("ScreenBackground")
 
-        // Fallback colors if asset catalog not set
-        static let warmYellow = Color(red: 1.0, green: 0.82, blue: 0.2)
-        static let softPink = Color(red: 1.0, green: 0.62, blue: 0.65)
-        static let softOrange = Color(red: 1.0, green: 0.68, blue: 0.38)
-        static let mintGreen = Color(red: 0.56, green: 0.9, blue: 0.7)
-        static let lavender = Color(red: 0.73, green: 0.65, blue: 0.95)
-        static let skyBlue = Color(red: 0.55, green: 0.78, blue: 1.0)
-        static let peach = Color(red: 1.0, green: 0.78, blue: 0.65)
-        static let cream = Color(red: 1.0, green: 0.98, blue: 0.94)
-
-        // Semantic
-        static let cardBackground = Color(.systemBackground)
-        static let screenBackground = Color(red: 0.97, green: 0.96, blue: 0.93)
-        static let textPrimary = Color(red: 0.18, green: 0.15, blue: 0.12)
-        static let textSecondary = Color(red: 0.5, green: 0.47, blue: 0.42)
+        // MARK: Semantic Colors (adaptive — from colorsets in Assets.xcassets)
+        static let screenBackground        = Color("ScreenBackground")
+        static let cardBackground          = Color("CardBackground")
+        static let cardBackgroundSecondary = Color("CardBackgroundSecondary")
+        static let textPrimary             = Color("TextPrimary")
+        static let textSecondary           = Color("TextSecondary")
+        static let textTertiary            = Color("TextTertiary")
+        static let separator               = Color("Separator")
     }
 
     // MARK: Corner Radius
     enum Radius {
-        static let small: CGFloat = 14
+        static let small: CGFloat  = 14
         static let medium: CGFloat = 20
-        static let large: CGFloat = 26
+        static let large: CGFloat  = 26
         static let button: CGFloat = 16
     }
 
     // MARK: Fonts - Rounded design
     enum Fonts {
-        static func largeTitle() -> Font { .system(size: 32, weight: .bold, design: .rounded) }
-        static func title() -> Font { .system(size: 24, weight: .bold, design: .rounded) }
-        static func title3() -> Font { .system(size: 20, weight: .semibold, design: .rounded) }
-        static func headline() -> Font { .system(size: 17, weight: .semibold, design: .rounded) }
-        static func body() -> Font { .system(size: 16, weight: .regular, design: .rounded) }
-        static func subheadline() -> Font { .system(size: 14, weight: .medium, design: .rounded) }
-        static func caption() -> Font { .system(size: 12, weight: .medium, design: .rounded) }
+        static func largeTitle()  -> Font { .system(size: 32, weight: .bold,     design: .rounded) }
+        static func title()       -> Font { .system(size: 24, weight: .bold,     design: .rounded) }
+        static func title3()      -> Font { .system(size: 20, weight: .semibold, design: .rounded) }
+        static func headline()    -> Font { .system(size: 17, weight: .semibold, design: .rounded) }
+        static func body()        -> Font { .system(size: 16, weight: .regular,  design: .rounded) }
+        static func subheadline() -> Font { .system(size: 14, weight: .medium,   design: .rounded) }
+        static func caption()     -> Font { .system(size: 12, weight: .medium,   design: .rounded) }
     }
 }
 
@@ -55,7 +55,7 @@ struct CuteCardModifier: ViewModifier {
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-                    .fill(.background)
+                    .fill(Theme.Colors.cardBackground)
                     .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
             )
     }
@@ -74,7 +74,7 @@ struct CuteButtonStyle: ButtonStyle {
     }
 
     func makeBody(configuration: Configuration) -> some View {
-        let effectiveColor = isEnabled ? color : Color(.systemGray4)
+        let effectiveColor = isEnabled ? color : Color(UIColor.systemGray4)
         configuration.label
             .font(Theme.Fonts.headline())
             .foregroundStyle(.white)
@@ -100,10 +100,10 @@ struct CuteTextFieldModifier: ViewModifier {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                    .fill(Color(.systemGray6))
+                    .fill(Color(UIColor.systemGray6))
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                            .strokeBorder(Color(.systemGray4).opacity(0.5), lineWidth: 1)
+                            .strokeBorder(Color(UIColor.systemGray4).opacity(0.5), lineWidth: 1)
                     )
             )
     }
@@ -119,7 +119,7 @@ struct CuteRowModifier: ViewModifier {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-                    .fill(.background)
+                    .fill(Theme.Colors.cardBackground)
             )
     }
 }
