@@ -1,5 +1,42 @@
 import SwiftUI
 
+// MARK: - PT Type Chip
+
+struct PTTypeChip: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .font(Theme.Fonts.subheadline())
+            }
+            .foregroundStyle(isSelected ? .white : Theme.Colors.textSecondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                    .fill(isSelected ? AnyShapeStyle(Theme.Colors.softOrange.gradient) : AnyShapeStyle(Theme.Colors.cardBackground))
+                    .shadow(
+                        color: isSelected ? Theme.Colors.softOrange.opacity(0.2) : .clear,
+                        radius: 8,
+                        x: 0,
+                        y: 3
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Sign Up View
+
 struct SignUpView: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(\.dismiss) private var dismiss
@@ -14,118 +51,52 @@ struct SignUpView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(Theme.Colors.softPink.opacity(0.15))
-                                .frame(width: 100, height: 100)
-                            Image(systemName: "person.badge.plus")
-                                .font(.system(size: 40, weight: .semibold))
-                                .foregroundStyle(Theme.Colors.softPink)
+                VStack(spacing: 0) {
+                    // MARK: - Header
+                    headerSection
+                        .padding(.bottom, 28)
+
+                    // MARK: - Section 1: Role Selection
+                    roleSelectionSection
+                        .padding(.bottom, 28)
+
+                    // MARK: - Section 2: Personal Info
+                    personalInfoSection
+                        .padding(.bottom, 28)
+
+                    // MARK: - Section 3: Security
+                    securitySection
+                        .padding(.bottom, 28)
+
+                    // MARK: - Error
+                    if let error = authManager.errorMessage {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                            Text(error)
                         }
-                        Text("Tạo tài khoản")
-                            .font(Theme.Fonts.title())
-                            .foregroundStyle(Theme.Colors.textPrimary)
-                        Text("Đăng ký để bắt đầu sử dụng Huselen 🎉")
-                            .font(Theme.Fonts.subheadline())
-                            .foregroundStyle(Theme.Colors.textSecondary)
+                        .font(Theme.Fonts.caption())
+                        .foregroundStyle(Theme.Colors.softPink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
                     }
-                    .padding(.top, 20)
 
-                    // Form
-                    VStack(spacing: 16) {
-                        FormField(title: "Họ và tên", placeholder: "Nguyễn Văn A", text: $fullName)
-
-                        FormField(title: "Email", placeholder: "your@email.com", text: $email, keyboardType: .emailAddress)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Bạn là")
-                                .font(Theme.Fonts.subheadline())
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                            Picker("Vai trò", selection: $selectedRole) {
-                                Label("Chủ phòng gym / Quản lý", systemImage: "building.2").tag(UserRole.owner)
-                                Label("Personal Trainer", systemImage: "figure.strengthtraining.traditional").tag(UserRole.trainer)
-                                Label("Khách hàng", systemImage: "person").tag(UserRole.client)
-                            }
-                            .pickerStyle(.menu)
-                            .cuteTextField()
-                            .onChange(of: selectedRole) { _, newRole in
-                                if newRole != .trainer { isFreelance = false }
-                            }
-                        }
-
-                        // Freelance sub-selection for trainers
-                        if selectedRole == .trainer {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Loại PT")
-                                    .font(Theme.Fonts.subheadline())
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                                Picker("Loại PT", selection: $isFreelance) {
-                                    Text("PT phòng gym").tag(false)
-                                    Text("PT tự do").tag(true)
-                                }
-                                .pickerStyle(.segmented)
-                            }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                            .animation(.easeInOut(duration: 0.2), value: selectedRole)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Mật khẩu")
-                                .font(Theme.Fonts.subheadline())
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                            SecureField("Ít nhất 6 ký tự", text: $password)
-                                .cuteTextField()
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Xác nhận mật khẩu")
-                                .font(Theme.Fonts.subheadline())
-                                .foregroundStyle(Theme.Colors.textSecondary)
-                            SecureField("Nhập lại mật khẩu", text: $confirmPassword)
-                                .cuteTextField()
-
-                            if !confirmPassword.isEmpty && password != confirmPassword {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "exclamationmark.circle.fill")
-                                    Text("Mật khẩu không khớp")
-                                }
-                                .font(Theme.Fonts.caption())
-                                .foregroundStyle(Theme.Colors.softPink)
-                            }
-                        }
-
-                        if let error = authManager.errorMessage {
-                            HStack(spacing: 4) {
-                                Image(systemName: "exclamationmark.circle.fill")
-                                Text(error)
-                            }
-                            .font(Theme.Fonts.caption())
-                            .foregroundStyle(Theme.Colors.softPink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .cuteCard()
-                    .padding(.horizontal)
-
-                    // Sign up button
+                    // MARK: - CTA
                     Button(action: signUp) {
                         if authManager.isLoading {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("Đăng ký 🚀")
+                            Text("Tạo tài khoản")
                         }
                     }
                     .buttonStyle(CuteButtonStyle(
                         color: isFormValid ? Theme.Colors.softPink : .gray.opacity(0.4)
                     ))
                     .disabled(!isFormValid || authManager.isLoading)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 30)
                 }
-                .padding(.bottom, 30)
             }
             .background(Theme.Colors.cream.ignoresSafeArea())
             .navigationTitle("Đăng ký")
@@ -145,6 +116,8 @@ struct SignUpView: View {
             }
         }
     }
+
+    // MARK: - Form Validation
 
     private var isFormValid: Bool {
         !fullName.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -169,6 +142,202 @@ struct SignUpView: View {
     }
 }
 
+// MARK: - Subviews
+
+private extension SignUpView {
+
+    // MARK: Header
+
+    var headerSection: some View {
+        VStack(spacing: 10) {
+            // Overlapping circles decoration with sparkles
+            ZStack {
+                Circle()
+                    .fill(Theme.Colors.softPink.opacity(0.15))
+                    .frame(width: 100, height: 100)
+                    .offset(x: -15, y: 10)
+
+                Circle()
+                    .fill(Theme.Colors.lavender.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                    .offset(x: 20, y: -5)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(Theme.Colors.softPink)
+            }
+            .frame(height: 120)
+
+            Text("Chào mừng bạn!")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundStyle(Theme.Colors.textPrimary)
+
+            Text("Tạo tài khoản chỉ mất vài phút")
+                .font(Theme.Fonts.subheadline())
+                .foregroundStyle(Theme.Colors.textSecondary)
+        }
+        .padding(.top, 24)
+    }
+
+    // MARK: Role Selection
+
+    var roleSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Bạn là ai?")
+                .font(Theme.Fonts.title3())
+                .foregroundStyle(Theme.Colors.textPrimary)
+                .padding(.horizontal, 24)
+
+            VStack(spacing: 10) {
+                RoleCard(
+                    icon: "building.2.fill",
+                    title: "Chủ phòng gym",
+                    subtitle: "Quản lý phòng tập, nhân viên và hội viên",
+                    color: Theme.Colors.warmYellow,
+                    isSelected: selectedRole == .owner,
+                    action: { selectedRole = .owner }
+                )
+
+                RoleCard(
+                    icon: "figure.strengthtraining.traditional",
+                    title: "Personal Trainer",
+                    subtitle: "Quản lý lịch tập và học viên của bạn",
+                    color: Theme.Colors.softOrange,
+                    isSelected: selectedRole == .trainer,
+                    action: { selectedRole = .trainer }
+                )
+
+                RoleCard(
+                    icon: "person.fill",
+                    title: "Học viên",
+                    subtitle: "Theo dõi lịch tập và tiến trình của bạn",
+                    color: Theme.Colors.mintGreen,
+                    isSelected: selectedRole == .client,
+                    action: { selectedRole = .client }
+                )
+            }
+            .padding(.horizontal, 24)
+
+            // PT type selection
+            if selectedRole == .trainer {
+                HStack(spacing: 10) {
+                    PTTypeChip(
+                        title: "PT phòng gym",
+                        icon: "building.fill",
+                        isSelected: !isFreelance,
+                        action: { isFreelance = false }
+                    )
+
+                    PTTypeChip(
+                        title: "PT tự do",
+                        icon: "figure.walk",
+                        isSelected: isFreelance,
+                        action: { isFreelance = true }
+                    )
+                }
+                .padding(.horizontal, 24)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .animation(.easeInOut(duration: 0.25), value: selectedRole)
+            }
+        }
+        .onChange(of: selectedRole) { _, newRole in
+            if newRole != .trainer { isFreelance = false }
+        }
+    }
+
+    // MARK: Personal Info
+
+    var personalInfoSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                CuteIconCircle(icon: "person.text.rectangle", color: Theme.Colors.lavender, size: 32)
+                Text("Thông tin cá nhân")
+                    .font(Theme.Fonts.title3())
+                    .foregroundStyle(Theme.Colors.textPrimary)
+            }
+            .padding(.horizontal, 24)
+
+            VStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.fill")
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .frame(width: 20)
+                    TextField("Nguyễn Văn A", text: $fullName)
+                        .textInputAutocapitalization(.words)
+                }
+                .cuteTextField()
+
+                HStack(spacing: 10) {
+                    Image(systemName: "envelope.fill")
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .frame(width: 20)
+                    TextField("your@email.com", text: $email)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .cuteTextField()
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    // MARK: Security
+
+    var securitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                CuteIconCircle(icon: "lock.shield", color: Theme.Colors.softPink, size: 32)
+                Text("Bảo mật")
+                    .font(Theme.Fonts.title3())
+                    .foregroundStyle(Theme.Colors.textPrimary)
+            }
+            .padding(.horizontal, 24)
+
+            VStack(spacing: 14) {
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(Theme.Colors.textTertiary)
+                            .frame(width: 20)
+                        SecureField("Ít nhất 6 ký tự", text: $password)
+                    }
+                    .cuteTextField()
+
+                    if !password.isEmpty {
+                        PasswordStrengthBar(password: password)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.rotation")
+                            .foregroundStyle(Theme.Colors.textTertiary)
+                            .frame(width: 20)
+                        SecureField("Nhập lại mật khẩu", text: $confirmPassword)
+                    }
+                    .cuteTextField()
+
+                    if !confirmPassword.isEmpty && password != confirmPassword {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                            Text("Mật khẩu không khớp")
+                        }
+                        .font(Theme.Fonts.caption())
+                        .foregroundStyle(Theme.Colors.softPink)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+}
+
+// MARK: - Preview
+
+// MARK: - FormField (shared, used by GymSetupView and others)
+
 struct FormField: View {
     let title: String
     let placeholder: String
@@ -187,4 +356,9 @@ struct FormField: View {
                 .cuteTextField()
         }
     }
+}
+
+#Preview {
+    SignUpView()
+        .environment(AuthManager())
 }
