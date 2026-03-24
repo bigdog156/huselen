@@ -1,14 +1,15 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "mcp__supabase__apply_migration",
       "Bash(ls /Users/finos/Developer/Me/Huselen/Huselen.xcodeproj/*.pbxproj)",
       "Bash(xcodebuild -project Huselen.xcodeproj -scheme Huselen -destination 'id=9685EE39-6A56-4563-9CF3-B252B3DFE397' build)",
       "Bash(xcodebuild -scheme Huselen -destination 'platform=iOS Simulator,id=AF3F1B5B-2D6B-4FFC-8848-EBF868DF84ED' build)",
-      "Bash(xcodebuild -scheme Huselen -destination 'platform=iOS Simulator,name=iPhone 16' -quiet)"
+      "Bash(xcodebuild -scheme Huselen -destination 'platform=iOS Simulator,name=iPhone 16' -quiet)",
+      "Bash(xargs ls:*)"
     ]
-  },
-   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

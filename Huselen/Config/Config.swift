@@ -25,7 +25,7 @@ enum Config {
              return ""
          }
         
-        static let visionModel = "gpt-5-nano"
+        static let visionModel = "gpt-5.4-nano"
         
         /// Max tokens for response
         static let maxTokens = 5000

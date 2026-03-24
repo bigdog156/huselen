@@ -341,3 +341,50 @@ USING (
 CREATE POLICY "Public read meal photos" ON storage.objects
 FOR SELECT
 USING (bucket_id = 'meal-photos');
+
+-- ============================================================
+-- meal_comments: PT/Admin feedback on client daily meals
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS meal_comments (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    meal_log_id   UUID REFERENCES user_meal_logs(id) ON DELETE CASCADE,
+    client_id     UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    comment_date  DATE NOT NULL,
+    author_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    author_name   TEXT NOT NULL,
+    author_role   TEXT NOT NULL CHECK (author_role IN ('pt', 'admin')),
+    message       TEXT NOT NULL,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS meal_comments_client_date_idx
+    ON meal_comments (client_id, comment_date);
+
+-- RLS: trainers and admins of the same gym can read/write
+ALTER TABLE meal_comments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Gym staff can manage meal comments"
+ON meal_comments
+FOR ALL
+TO authenticated
+USING (
+    -- Author can always access their own comments
+    author_id = auth.uid()
+    OR
+    -- Gym owner (admin) can access all comments for their clients
+    client_id IN (
+        SELECT id FROM clients WHERE owner_id = auth.uid()
+    )
+    OR
+    -- Trainers can access comments for their assigned clients
+    client_id IN (
+        SELECT DISTINCT s.client_id
+        FROM training_sessions s
+        JOIN trainers t ON t.id = s.trainer_id
+        WHERE t.profile_id = auth.uid()
+    )
+)
+WITH CHECK (
+    author_id = auth.uid()
+);

@@ -348,6 +348,7 @@ private extension PTClientsView {
 struct PTClientDetailView: View {
     let client: Client
     @State private var showUpdateStats = false
+    @State private var showMealReview = false
 
     private var completedSessions: Int {
         client.sessions.filter { $0.isCompleted }.count
@@ -381,6 +382,7 @@ struct PTClientDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 profileCard
+                mealReviewBanner
                 trainingStatsRow
                 if hasBodyStats { bodyStatsGrid }
                 if hasMeasurements { measurementsSection }
@@ -404,12 +406,54 @@ struct PTClientDetailView: View {
         .sheet(isPresented: $showUpdateStats) {
             UpdateBodyStatsSheet(client: client)
         }
+        .navigationDestination(isPresented: $showMealReview) {
+            ClientMealReviewView(client: client)
+        }
     }
 }
 
 // MARK: - PTClientDetailView Subviews
 
 private extension PTClientDetailView {
+
+    // MARK: Meal Review Banner
+
+    var mealReviewBanner: some View {
+        Button { showMealReview = true } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.fitGreen.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.fitGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Nhật ký bữa ăn")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.fitTextPrimary)
+                    Text("Xem & nhận xét bữa ăn hằng ngày")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.fitTextSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.fitTextTertiary)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.fitCard)
+                    .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     // MARK: Profile Card
 

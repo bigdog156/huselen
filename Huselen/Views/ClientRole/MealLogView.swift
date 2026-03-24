@@ -153,229 +153,220 @@ struct MealSectionView: View {
 
     @State private var isExpanded = false
     @State private var noteText: String = ""
+    @State private var selectedFeeling: MealFeeling?
     @FocusState private var isNoteFocused: Bool
 
-    private var shouldShowContent: Bool {
-        !isCollapsible || isExpanded || mealLog?.hasContent == true
-    }
+    private var showBody: Bool { !isCollapsible || isExpanded || mealLog?.hasContent == true }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if isCollapsible {
-                collapsibleHeader
-            } else {
-                standardHeader
-            }
+        VStack(spacing: 0) {
+            headerRow
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
 
-            if shouldShowContent {
-                mealContentView
-                noteInputView
-
-                if let calories = mealLog?.calories, calories > 0 {
-                    MealCalorieDisplay(mealLog: mealLog)
-                }
-
-                if mealLog?.hasContent == true && !isCollapsible {
-                    feelingSelector
-                }
+            if showBody {
+                Divider()
+                    .padding(.horizontal, 16)
+                bodySection
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
             }
         }
-        .onAppear {
-            noteText = mealLog?.note ?? ""
-        }
+        .background(Color.fitCard)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onAppear { noteText = mealLog?.note ?? "" }
     }
 
-    // MARK: - Headers
+    // MARK: - Header Row
 
-    private var standardHeader: some View {
-        HStack {
-            Text(mealType.displayName)
-                .font(.system(size: 18, weight: .bold))
-
-            Spacer()
-
-            if let log = mealLog, log.hasContent {
-                Text(log.formattedTime)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            } else {
-                Text(mealType.placeholder)
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+    private var headerRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(mealType.color.opacity(0.15))
+                    .frame(width: 42, height: 42)
+                Image(systemName: mealType.icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(mealType.color)
             }
-        }
-    }
 
-    private var collapsibleHeader: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isExpanded.toggle()
-            }
-        } label: {
-            HStack {
-                Text(mealType.displayName)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text("TÙY CHỌN")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.fitCard))
-
-                Spacer()
-
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(mealType.displayName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.fitTextPrimary)
+                    if isCollapsible {
+                        Text("Tùy chọn")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.fitTextTertiary.opacity(0.12)))
+                    }
+                }
                 if let log = mealLog, log.hasContent {
                     Text(log.formattedTime)
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .rotationEffect(.degrees(isExpanded || mealLog?.hasContent == true ? 180 : 0))
-            }
-        }
-    }
-
-    // MARK: - Content
-
-    @ViewBuilder
-    private var mealContentView: some View {
-        if let log = mealLog, let photoUrl = log.photoUrl, let url = URL(string: photoUrl) {
-            LocketStylePhotoCard(url: url, note: log.note, onDelete: onDelete)
-        } else {
-            Button { onTapPhoto() } label: {
-                GeometryReader { geometry in
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.fitCard)
-                                .frame(width: 56, height: 56)
-
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(.secondary)
-
-                            // Plus badge
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 20, height: 20)
-                                .overlay(
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.white)
-                                )
-                                .offset(x: 20, y: -20)
-                        }
-
-                        Text(mealType.photoPlaceholder)
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(width: geometry.size.width, height: geometry.size.width) // 1:1 ratio
-                    .background(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [8]))
-                            .foregroundStyle(Color.fitTextTertiary)
-                    )
-                }
-                .aspectRatio(1, contentMode: .fit)
-            }
-        }
-    }
-
-    private var noteInputView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let log = mealLog, let existingNote = log.note, !existingNote.isEmpty, noteText.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 14))
-                        .foregroundColor(.blue)
-
-                    Text(existingNote)
-                        .font(.system(size: 14))
-                        .foregroundColor(.primary)
-                        .lineLimit(3)
-
-                    Spacer()
-
-                    Button {
-                        noteText = existingNote
-                        isNoteFocused = true
-                    } label: {
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.fitCard))
-            }
-
-            HStack(spacing: 12) {
-                Image(systemName: "text.alignleft")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-
-                TextField("Thêm ghi chú cho bữa ăn...", text: $noteText)
-                    .font(.system(size: 15))
-                    .focused($isNoteFocused)
-                    .onSubmit {
-                        if !noteText.isEmpty {
-                            onSaveNote(noteText)
-                            noteText = ""
-                        }
-                    }
-
-                if !noteText.isEmpty {
-                    Button {
-                        onSaveNote(noteText)
-                        noteText = ""
-                        isNoteFocused = false
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(.blue)
-                    }
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.fitTextSecondary)
+                } else {
+                    Text(mealType.placeholder)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.fitTextTertiary)
+                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.fitCard)
-                    .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
-            )
-        }
-    }
-
-    // MARK: - Feeling Selector
-
-    private var feelingSelector: some View {
-        HStack(spacing: 16) {
-            Text("CẢM NHẬN")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
-                .tracking(1)
 
             Spacer()
 
-            ForEach(MealFeeling.allCases, id: \.self) { feeling in
-                Button {
-                    // Handle feeling selection
-                } label: {
-                    Image(systemName: feeling.icon)
+            if let calories = mealLog?.calories, calories > 0 {
+                Text("\(calories) kcal")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(mealType.color)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(mealType.color.opacity(0.12)))
+            }
+
+            if isCollapsible {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.fitTextSecondary)
+                    .rotationEffect(.degrees(showBody ? 180 : 0))
+                    .animation(.easeInOut(duration: 0.2), value: showBody)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isCollapsible {
+                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+            }
+        }
+    }
+
+    // MARK: - Body
+
+    private var bodySection: some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                // Note input
+                VStack(alignment: .leading, spacing: 6) {
+                    if let log = mealLog, let existingNote = log.note, !existingNote.isEmpty, noteText.isEmpty {
+                        Text(existingNote)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.fitTextSecondary)
+                            .lineLimit(2)
+                    }
+                    HStack(spacing: 8) {
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.fitTextTertiary)
+                        TextField("Ghi chú bữa ăn...", text: $noteText)
+                            .font(.system(size: 13))
+                            .focused($isNoteFocused)
+                            .onSubmit {
+                                if !noteText.isEmpty { onSaveNote(noteText); noteText = "" }
+                            }
+                        if !noteText.isEmpty {
+                            Button {
+                                onSaveNote(noteText); noteText = ""; isNoteFocused = false
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Color.fitGreen)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
+                // Photo thumbnail or add button
+                photoThumbnail
+            }
+
+            if let calories = mealLog?.calories, calories > 0 {
+                MealCalorieDisplay(mealLog: mealLog)
+            }
+
+            if mealLog?.hasContent == true {
+                feelingRow
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoThumbnail: some View {
+        if let log = mealLog, let photoUrl = log.photoUrl, let url = URL(string: photoUrl) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    Color.fitCard.overlay(ProgressView())
+                }
+            }
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contextMenu {
+                Button(role: .destructive) { onDelete() } label: {
+                    Label("Xóa ảnh", systemImage: "trash")
+                }
+            }
+        } else {
+            Button { onTapPhoto() } label: {
+                VStack(spacing: 5) {
+                    Image(systemName: "camera.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(mealLog?.feeling == feeling ? feeling.color : .secondary.opacity(0.5))
+                        .foregroundStyle(Color.fitTextTertiary)
+                    Text("Ảnh")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.fitTextTertiary)
+                }
+                .frame(width: 72, height: 72)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            style: StrokeStyle(lineWidth: 1.5, dash: [5]),
+                            antialiased: true
+                        )
+                        .foregroundStyle(Color.fitTextTertiary.opacity(0.4))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var feelingRow: some View {
+        HStack {
+            Text("Cảm nhận")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.fitTextTertiary)
+            Spacer()
+            HStack(spacing: 2) {
+                ForEach(MealFeeling.allCases, id: \.self) { feeling in
+                    Button {
+                        selectedFeeling = (selectedFeeling == feeling) ? nil : feeling
+                    } label: {
+                        Image(systemName: feeling.icon)
+                            .font(.system(size: 17))
+                            .foregroundStyle(
+                                (selectedFeeling == feeling || mealLog?.feeling == feeling)
+                                    ? feeling.color : Color.fitTextTertiary.opacity(0.4)
+                            )
+                            .padding(7)
+                            .background(
+                                Circle().fill(
+                                    (selectedFeeling == feeling || mealLog?.feeling == feeling)
+                                        ? feeling.color.opacity(0.12) : Color.clear
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .padding(.horizontal, 4)
     }
 }
 

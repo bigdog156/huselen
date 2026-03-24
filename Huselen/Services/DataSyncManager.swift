@@ -1665,4 +1665,107 @@ final class DataSyncManager {
             errorMessage = "Lỗi xoá bài tập: \(error.localizedDescription)"
         }
     }
+
+    // MARK: - Meal Review (PT/Admin views client meals)
+
+    /// Fetch a client's meal logs for a specific date (by their Supabase auth profile ID).
+    func fetchClientMealLogs(profileId: String, date: Date) async -> [MealType: UserMealLog] {
+        do {
+            let dateStr = DateFormatters.localDateOnly.string(from: date)
+            let logs: [UserMealLog] = try await supabase
+                .from("user_meal_logs")
+                .select()
+                .eq("user_id", value: profileId)
+                .eq("logged_date", value: dateStr)
+                .execute()
+                .value
+            return Dictionary(uniqueKeysWithValues: logs.map { ($0.mealType, $0) })
+        } catch {
+            return [:]
+        }
+    }
+
+    /// Fetch PT/Admin comments on a client's meals for a specific date.
+    func fetchMealComments(clientId: String, date: Date) async -> [MealComment] {
+        do {
+            let dateStr = DateFormatters.localDateOnly.string(from: date)
+            let comments: [MealComment] = try await supabase
+                .from("meal_comments")
+                .select()
+                .eq("client_id", value: clientId)
+                .eq("comment_date", value: dateStr)
+                .order("created_at", ascending: true)
+                .execute()
+                .value
+            return comments
+        } catch {
+            return []
+        }
+    }
+
+    /// Save a new PT/Admin comment on a client's meal.
+    @discardableResult
+    func saveMealComment(_ comment: MealComment) async -> Bool {
+        do {
+            try await supabase
+                .from("meal_comments")
+                .insert(comment)
+                .execute()
+            return true
+        } catch {
+            errorMessage = "Lỗi lưu nhận xét: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Delete a comment (author only).
+    func deleteMealComment(_ comment: MealComment) async {
+        guard let id = comment.id else { return }
+        do {
+            try await supabase
+                .from("meal_comments")
+                .delete()
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            errorMessage = "Lỗi xoá nhận xét: \(error.localizedDescription)"
+        }
+    }
+
+    /// Update a client's nutrition goals (called when PT saves a meal plan).
+    func updateClientNutritionGoals(
+        clientId: UUID,
+        calorieGoal: Int,
+        proteinGoal: Double,
+        carbsGoal: Double,
+        fatGoal: Double
+    ) async {
+        do {
+            struct GoalUpdate: Encodable {
+                let calorieGoal: Int
+                let proteinGoal: Double
+                let carbsGoal: Double
+                let fatGoal: Double
+                enum CodingKeys: String, CodingKey {
+                    case calorieGoal = "calorie_goal"
+                    case proteinGoal = "protein_goal"
+                    case carbsGoal = "carbs_goal"
+                    case fatGoal = "fat_goal"
+                }
+            }
+            try await supabase
+                .from("clients")
+                .update(GoalUpdate(calorieGoal: calorieGoal, proteinGoal: proteinGoal, carbsGoal: carbsGoal, fatGoal: fatGoal))
+                .eq("id", value: clientId.uuidString)
+                .execute()
+            if let idx = clients.firstIndex(where: { $0.id == clientId }) {
+                clients[idx].calorieGoal = calorieGoal
+                clients[idx].proteinGoal = proteinGoal
+                clients[idx].carbsGoal = carbsGoal
+                clients[idx].fatGoal = fatGoal
+            }
+        } catch {
+            errorMessage = "Lỗi cập nhật mục tiêu: \(error.localizedDescription)"
+        }
+    }
 }

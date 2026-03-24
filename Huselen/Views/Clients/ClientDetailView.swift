@@ -10,6 +10,7 @@ struct ClientDetailView: View {
     @State private var showingPurchaseForm = false
     @State private var editingPurchase: PackagePurchase?
     @State private var showDeleteConfirm = false
+    @State private var showMealReview = false
 
     private var activePurchases: [PackagePurchase] {
         client.purchases.filter { !$0.isExpired && !$0.isFullyUsed }
@@ -31,6 +32,7 @@ struct ClientDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 profileHeaderCard
+                mealReviewLink
                 trainingStatsRow
                 if !client.goal.isEmpty { goalCard }
                 if hasBodyStats { bodyStatsSection }
@@ -44,6 +46,9 @@ struct ClientDetailView: View {
         .background(Theme.Colors.screenBackground)
         .navigationTitle(client.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showMealReview) {
+            ClientMealReviewView(client: client)
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 4) {
@@ -88,6 +93,45 @@ struct ClientDetailView: View {
 // MARK: - Subviews
 
 private extension ClientDetailView {
+
+    // MARK: Meal Review Link
+
+    var mealReviewLink: some View {
+        Button { showMealReview = true } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.fitGreen.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.fitGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Nhật ký bữa ăn")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.fitTextPrimary)
+                    Text("Xem & nhận xét bữa ăn hằng ngày")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.fitTextSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.fitTextTertiary)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.fitCard)
+                    .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
     // MARK: Profile Header Card
 
@@ -309,17 +353,14 @@ private extension ClientDetailView {
                 )
             } else {
                 ForEach(activePurchases) { purchase in
-                    NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
-                        activePurchaseCard(purchase: purchase)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button {
-                            editingPurchase = purchase
-                        } label: {
-                            Label("Chỉnh sửa gói", systemImage: "pencil")
+                    activePurchaseCard(purchase: purchase)
+                        .contextMenu {
+                            Button {
+                                editingPurchase = purchase
+                            } label: {
+                                Label("Chỉnh sửa gói", systemImage: "pencil")
+                            }
                         }
-                    }
                 }
             }
         }
@@ -327,7 +368,7 @@ private extension ClientDetailView {
 
     func activePurchaseCard(purchase: PackagePurchase) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Row 1: package name + price
+            // Row 1: package name + edit button
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: "ticket.fill")
@@ -339,9 +380,13 @@ private extension ClientDetailView {
                         .foregroundStyle(Color.fitTextPrimary)
                 }
                 Spacer()
-                Text(formatVND(purchase.price))
-                    .font(Theme.Fonts.subheadline())
-                    .foregroundStyle(Color.fitGreen)
+                Button {
+                    editingPurchase = purchase
+                } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.Colors.softOrange)
+                }
             }
 
             // Row 2: trainer + remaining badge
@@ -378,10 +423,27 @@ private extension ClientDetailView {
                 color: purchase.remainingSessions > 3 ? Color.fitGreen : Color.fitCoral
             )
 
-            // Expiry date
-            Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.fitTextTertiary)
+            // Row 3: price + expiry
+            HStack {
+                Text(formatVND(purchase.price))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.fitGreen)
+                Spacer()
+                Text("HSD: \(purchase.expiryDate, format: .dateTime.day().month().year())")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.fitTextTertiary)
+            }
+
+            // Session history link
+            NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
+                HStack(spacing: 6) {
+                    Image(systemName: "list.bullet.clipboard")
+                        .font(.system(size: 12))
+                    Text("Xem lịch sử buổi tập")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(Theme.Colors.mintGreen)
+            }
         }
         .padding(14)
         .background(

@@ -17,6 +17,7 @@ struct PurchaseEditView: View {
     @State private var selectedDays: Set<Int>
     @State private var scheduleTime: Date
     @State private var selectedTrainer: Trainer?
+    @State private var remainingSessions: Int
     @State private var isSaving = false
 
     init(purchase: PackagePurchase) {
@@ -28,6 +29,7 @@ struct PurchaseEditView: View {
         _selectedDays = State(initialValue: Set(purchase.scheduleDays))
         _scheduleTime = State(initialValue: Calendar.current.date(from: DateComponents(hour: purchase.scheduleHour, minute: purchase.scheduleMinute)) ?? Date())
         _selectedTrainer = State(initialValue: purchase.trainer)
+        _remainingSessions = State(initialValue: purchase.remainingSessions)
     }
 
     private func formattedPrice(_ price: Double) -> String {
@@ -90,9 +92,46 @@ struct PurchaseEditView: View {
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
+                            .onChange(of: totalSessions) { _, newValue in
+                                remainingSessions = max(newValue - purchase.usedSessions, 0)
+                            }
                     }
                     LabeledContent("Đã dùng", value: "\(purchase.usedSessions) buổi")
-                    LabeledContent("Còn lại", value: "\(max(totalSessions - purchase.usedSessions, 0)) buổi")
+
+                    HStack {
+                        Text("Còn lại")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        HStack(spacing: 12) {
+                            Button {
+                                if remainingSessions > 0 {
+                                    remainingSessions -= 1
+                                    totalSessions = purchase.usedSessions + remainingSessions
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(remainingSessions > 0 ? Color.fitCoral : Color.gray.opacity(0.3))
+                            }
+                            .disabled(remainingSessions <= 0)
+
+                            Text("\(remainingSessions)")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .foregroundStyle(remainingSessions > 0 ? Color.fitGreen : Color.fitCoral)
+                                .frame(minWidth: 40)
+
+                            Button {
+                                remainingSessions += 1
+                                totalSessions = purchase.usedSessions + remainingSessions
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(Color.fitGreen)
+                            }
+                        }
+                        Text("buổi")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Hạn sử dụng") {

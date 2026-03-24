@@ -393,6 +393,10 @@ struct MealSummaryCard: View {
     let onDelete: (MealEntry) -> Void
 
     private var totalCalories: Int { entries.reduce(0) { $0 + $1.calories } }
+    private var totalProtein: Double { entries.reduce(0) { $0 + $1.protein } }
+    private var totalCarbs: Double { entries.reduce(0) { $0 + $1.carbs } }
+    private var totalFat: Double { entries.reduce(0) { $0 + $1.fat } }
+
     private var mealLabel: String {
         switch mealType {
         case .breakfast: return "Bữa sáng"
@@ -401,40 +405,67 @@ struct MealSummaryCard: View {
         case .snack: return "Bữa phụ"
         }
     }
+    private var mealColor: Color {
+        switch mealType {
+        case .breakfast: return .orange
+        case .lunch: return .blue
+        case .dinner: return .indigo
+        case .snack: return .purple
+        }
+    }
     private var descriptionText: String {
-        entries.map { $0.name }.joined(separator: ", ")
+        entries.map { $0.name }.joined(separator: " · ")
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            // Food image placeholder
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.fitGreenSoft)
-                Image(systemName: mealType.icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.fitGreen)
-            }
-            .frame(width: 52, height: 52)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(mealColor.opacity(0.15))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: mealType.icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(mealColor)
+                }
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(mealLabel)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.fitTextPrimary)
-                    Spacer()
-                    Text("\(totalCalories) kcal")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.fitGreen)
+                    Text(descriptionText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .lineLimit(1)
                 }
 
-                Text(descriptionText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.fitTextSecondary)
-                    .lineLimit(1)
+                Spacer()
+
+                Text("\(totalCalories) kcal")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(mealColor)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(mealColor.opacity(0.12)))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+
+            if totalProtein > 0 || totalCarbs > 0 || totalFat > 0 {
+                Divider().padding(.horizontal, 14)
+                HStack(spacing: 16) {
+                    macroChip(value: totalProtein, label: "Đạm", color: .blue)
+                    macroChip(value: totalCarbs, label: "Carbs", color: .orange)
+                    macroChip(value: totalFat, label: "Béo", color: .pink)
+                    Spacer()
+                    Text("\(entries.count) món")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.fitTextTertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
             }
         }
-        .padding(16)
         .background(Color.fitCard)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contextMenu {
@@ -445,6 +476,15 @@ struct MealSummaryCard: View {
                     Label("Xoá \(entry.name)", systemImage: "trash")
                 }
             }
+        }
+    }
+
+    private func macroChip(value: Double, label: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text("\(Int(value))g \(label)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.fitTextSecondary)
         }
     }
 }
