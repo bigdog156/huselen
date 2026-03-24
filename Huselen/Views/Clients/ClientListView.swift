@@ -25,6 +25,7 @@ struct ClientListView: View {
     @State private var showingAddForm = false
     @State private var searchText = ""
     @State private var selectedFilter: ClientFilter = .all
+    @State private var clientToDelete: Client?
 
     // MARK: - Filtered Data
 
@@ -78,7 +79,24 @@ struct ClientListView: View {
             .sheet(isPresented: $showingAddForm) {
                 SearchClientView()
             }
-
+            .confirmationDialog(
+                "Xoá học viên \(clientToDelete?.name ?? "")?",
+                isPresented: Binding(
+                    get: { clientToDelete != nil },
+                    set: { if !$0 { clientToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Xoá học viên", role: .destructive) {
+                    if let client = clientToDelete {
+                        Task { await syncManager.deleteClient(client) }
+                        clientToDelete = nil
+                    }
+                }
+                Button("Huỷ", role: .cancel) { clientToDelete = nil }
+            } message: {
+                Text("Hành động này không thể hoàn tác. Tất cả dữ liệu tập luyện sẽ bị xoá.")
+            }
             .profileToolbar()
         }
     }
@@ -212,7 +230,7 @@ private extension ClientListView {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await syncManager.deleteClient(client) }
+                                clientToDelete = client
                             } label: {
                                 Label("Xoá", systemImage: "trash.fill")
                             }

@@ -6,6 +6,7 @@ struct FreelancePTClientsView: View {
     @Environment(DataSyncManager.self) private var syncManager
     @State private var showAddClient = false
     @State private var searchText = ""
+    @State private var clientToDelete: Client?
 
     private var clients: [Client] {
         let sorted = syncManager.clients.sorted { $0.name < $1.name }
@@ -33,6 +34,24 @@ struct FreelancePTClientsView: View {
             }
             .sheet(isPresented: $showAddClient) {
                 FreelanceAddClientSheet()
+            }
+            .confirmationDialog(
+                "Xoá học viên \(clientToDelete?.name ?? "")?",
+                isPresented: Binding(
+                    get: { clientToDelete != nil },
+                    set: { if !$0 { clientToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Xoá học viên", role: .destructive) {
+                    if let client = clientToDelete {
+                        Task { await syncManager.deleteClient(client) }
+                        clientToDelete = nil
+                    }
+                }
+                Button("Huỷ", role: .cancel) { clientToDelete = nil }
+            } message: {
+                Text("Hành động này không thể hoàn tác. Tất cả dữ liệu tập luyện sẽ bị xoá.")
             }
             .refreshable {
                 await syncManager.refresh()
@@ -80,9 +99,9 @@ private extension FreelancePTClientsView {
                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
-                        Task { await syncManager.deleteClient(client) }
+                        clientToDelete = client
                     } label: {
                         Label("Xoá", systemImage: "trash")
                     }

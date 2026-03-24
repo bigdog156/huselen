@@ -69,7 +69,7 @@ struct ClientCheckInHistoryView: View {
                     .padding(.vertical, 16)
                 }
             }
-            .background(Color(.systemBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Lịch sử check-in")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

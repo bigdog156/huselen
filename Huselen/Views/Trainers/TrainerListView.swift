@@ -4,6 +4,7 @@ struct TrainerListView: View {
     @Environment(DataSyncManager.self) private var syncManager
     @State private var showingAddForm = false
     @State private var searchText = ""
+    @State private var trainerToDelete: Trainer?
 
     var filteredTrainers: [Trainer] {
         var list = syncManager.trainers
@@ -24,8 +25,32 @@ struct TrainerListView: View {
                     NavigationLink(destination: TrainerDetailView(trainer: trainer)) {
                         TrainerRowView(trainer: trainer)
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            trainerToDelete = trainer
+                        } label: {
+                            Label("Xoá", systemImage: "trash.fill")
+                        }
+                    }
                 }
-                .onDelete(perform: deleteTrainers)
+            }
+            .confirmationDialog(
+                "Xoá PT \(trainerToDelete?.name ?? "")?",
+                isPresented: Binding(
+                    get: { trainerToDelete != nil },
+                    set: { if !$0 { trainerToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Xoá PT", role: .destructive) {
+                    if let trainer = trainerToDelete {
+                        Task { await syncManager.deleteTrainer(trainer) }
+                        trainerToDelete = nil
+                    }
+                }
+                Button("Huỷ", role: .cancel) { trainerToDelete = nil }
+            } message: {
+                Text("Hành động này không thể hoàn tác. Các buổi tập liên quan sẽ không còn PT.")
             }
             .overlay {
                 if filteredTrainers.isEmpty {
@@ -51,12 +76,6 @@ struct TrainerListView: View {
         }
     }
 
-    private func deleteTrainers(offsets: IndexSet) {
-        for index in offsets {
-            let trainer = filteredTrainers[index]
-            Task { await syncManager.deleteTrainer(trainer) }
-        }
-    }
 }
 
 struct TrainerRowView: View {

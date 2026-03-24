@@ -11,11 +11,6 @@ struct ClientTabView: View {
                     Label("Check-in", systemImage: "camera.fill")
                 }
 
-            MySessionsView()
-                .tabItem {
-                    Label("Lịch tập", systemImage: "calendar")
-                }
-
             MyPackagesView()
                 .tabItem {
                     Label("Gói của tôi", systemImage: "creditcard")

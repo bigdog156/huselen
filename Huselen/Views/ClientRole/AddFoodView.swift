@@ -51,7 +51,7 @@ struct AddFoodView: View {
                     .padding(.bottom, 32)
                 }
             }
-            .background(Color(.systemBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Thêm thức ăn")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

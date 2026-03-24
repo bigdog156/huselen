@@ -52,7 +52,7 @@ struct ProgressPhotosView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 32)
             }
-            .background(Color(.systemBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Ảnh tiến trình")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -231,7 +231,7 @@ struct ProgressPhotosView: View {
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(selected ? Color.fitGreen : Color(.systemGray6))
+                    .fill(selected ? Color.fitGreen : Color.fitCard)
             )
         }
         .buttonStyle(.plain)
@@ -539,7 +539,7 @@ struct ComparePhotosView: View {
             if case .success(let img) = phase {
                 img.resizable().scaledToFill()
             } else {
-                Color(.systemGray5)
+                Color.fitCard
             }
         }
     }

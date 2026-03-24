@@ -48,7 +48,7 @@ struct MyPackagesView: View {
                 }
             }
         }
-        .background(Color(.systemBackground))
+        .background(Theme.Colors.screenBackground)
         .refreshable { await syncManager.refresh() }
         .sheet(item: $selectedPurchase) { purchase in
             PackageDetailSheet(purchase: purchase)
@@ -206,7 +206,7 @@ struct MyPackagesView: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(active ? Color(.systemBackground) : Color.fitCard.opacity(0.7))
+                .fill(active ? Color.fitCard : Color.fitCard.opacity(0.7))
                 .shadow(color: active ? .black.opacity(0.06) : .clear, radius: 10, y: 4)
         )
         .opacity(active ? 1 : 0.7)
@@ -370,7 +370,7 @@ private struct PackageDetailSheet: View {
                         }
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(.systemBackground))
+                                .fill(Color.fitCard)
                                 .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                         )
 
@@ -402,7 +402,7 @@ private struct PackageDetailSheet: View {
                         .padding(16)
                         .background(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(.systemBackground))
+                                .fill(Color.fitCard)
                                 .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                         )
 
@@ -419,7 +419,7 @@ private struct PackageDetailSheet: View {
                     .padding(16)
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -526,7 +526,7 @@ private struct PackageDetailSheet: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
         )
     }

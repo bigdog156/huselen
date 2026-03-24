@@ -105,7 +105,7 @@ struct MealLogView: View {
                     .padding(.top, 20)
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Nhật ký ăn uống")
             .navigationBarTitleDisplayMode(.inline)
             .profileToolbar()
@@ -223,7 +223,7 @@ struct MealSectionView: View {
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(Color(.systemGray5)))
+                    .background(Capsule().fill(Color.fitCard))
 
                 Spacer()
 
@@ -253,7 +253,7 @@ struct MealSectionView: View {
                     VStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemGray5))
+                                .fill(Color.fitCard)
                                 .frame(width: 56, height: 56)
 
                             Image(systemName: "camera.fill")
@@ -280,7 +280,7 @@ struct MealSectionView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 24)
                             .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [8]))
-                            .foregroundColor(Color(.systemGray4))
+                            .foregroundStyle(Color.fitTextTertiary)
                     )
                 }
                 .aspectRatio(1, contentMode: .fit)
@@ -314,7 +314,7 @@ struct MealSectionView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6)))
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.fitCard))
             }
 
             HStack(spacing: 12) {
@@ -348,7 +348,7 @@ struct MealSectionView: View {
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemBackground))
+                    .fill(Color.fitCard)
                     .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
             )
         }
@@ -393,7 +393,7 @@ struct LocketStylePhotoCard: View {
                     switch phase {
                     case .empty:
                         Rectangle()
-                            .fill(Color(.systemGray5))
+                            .fill(Color.fitCard)
                             .overlay(
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
@@ -406,7 +406,7 @@ struct LocketStylePhotoCard: View {
                             .clipped()
                     case .failure:
                         Rectangle()
-                            .fill(Color(.systemGray5))
+                            .fill(Color.fitCard)
                             .overlay(
                                 Image(systemName: "photo")
                                     .font(.system(size: 40))
@@ -557,7 +557,7 @@ struct DailyNutritionSummaryView: View {
                 // Circular Progress
                 ZStack {
                     Circle()
-                        .stroke(Color(.systemGray5), lineWidth: 6)
+                        .stroke(Color.fitCard, lineWidth: 6)
                         .frame(width: 60, height: 60)
                     
                     Circle()
@@ -634,7 +634,7 @@ struct DailyNutritionSummaryView: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
         )
     }
@@ -673,7 +673,7 @@ struct MacroProgressView: View {
             
             ZStack {
                 Circle()
-                    .stroke(Color(.systemGray5), lineWidth: 4)
+                    .stroke(Color.fitCard, lineWidth: 4)
                     .frame(width: 44, height: 44)
                 
                 Circle()
@@ -723,7 +723,7 @@ struct AddCaloriesButtonView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(.systemGray6))
+                    .fill(Color.fitCard)
             )
         }
     }
@@ -759,7 +759,7 @@ struct FoodSelectionSheet: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color(.systemGray6))
+                .background(Color.fitCard)
                 .cornerRadius(12)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -780,7 +780,7 @@ struct FoodSelectionSheet: View {
                         .padding(.horizontal, 16)
                     }
                     .padding(.vertical, 12)
-                    .background(Color(.systemBackground))
+                    .background(Color.fitCard)
                     
                     // Total calories display
                     HStack {
@@ -863,7 +863,7 @@ struct FoodItemChip: View {
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(Color(.systemGray6))
+                .fill(Color.fitCard)
         )
     }
 }
@@ -969,7 +969,7 @@ struct MealCalorieDisplay: View {
                         .padding(.vertical, 4)
                         .background(
                             Capsule()
-                                .fill(Color(.systemGray6))
+                                .fill(Color.fitCard)
                         )
                 }
             }
@@ -977,7 +977,7 @@ struct MealCalorieDisplay: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
+                    .fill(Color.fitCard)
             )
         }
     }
@@ -1038,7 +1038,7 @@ struct MealAnalysisResultSheet: View {
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                                    .stroke(Theme.Colors.separator, lineWidth: 1)
                             )
                             .focused($isNoteFocused)
                     }
@@ -1161,7 +1161,7 @@ struct MealAnalysisResultSheet: View {
                                 .padding(16)
                                 .background(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color(.systemGray6))
+                                        .fill(Color.fitCard)
                                 )
                                 .padding(.horizontal, 16)
                             }
@@ -1274,7 +1274,7 @@ struct MealAnalysisResultSheet: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color(.systemBackground))
+                    .background(Color.fitCard)
                 }
             }
         }
@@ -1329,7 +1329,7 @@ struct CalorieSummaryCard: View {
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
         )
     }
@@ -1408,7 +1408,7 @@ struct DetectedFoodRow: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(.systemGray6))
+                .fill(Color.fitCard)
         )
     }
 }

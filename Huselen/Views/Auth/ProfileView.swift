@@ -157,8 +157,8 @@ struct ProfileView: View {
                             Divider()
                         }
 
-                        // Change gym/PT button (for clients and gym trainers, not owners)
-                        if authManager.userRole != .owner {
+                        // Change gym/PT button (for clients only, not owners or trainers)
+                        if authManager.userRole == .client {
                             Button {
                                 showLeaveConfirm = true
                             } label: {

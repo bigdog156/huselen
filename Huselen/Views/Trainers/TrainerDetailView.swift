@@ -2,7 +2,10 @@ import SwiftUI
 
 struct TrainerDetailView: View {
     var trainer: Trainer
+    @Environment(DataSyncManager.self) private var syncManager
+    @Environment(\.dismiss) private var dismiss
     @State private var showingEditForm = false
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         List {
@@ -84,10 +87,31 @@ struct TrainerDetailView: View {
         .navigationTitle(trainer.name)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Sửa") {
-                    showingEditForm = true
+                HStack(spacing: 4) {
+                    Button("Sửa") { showingEditForm = true }
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(Color.fitCoral)
+                    }
                 }
             }
+        }
+        .confirmationDialog(
+            "Xoá PT \(trainer.name)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Xoá PT", role: .destructive) {
+                Task {
+                    await syncManager.deleteTrainer(trainer)
+                    dismiss()
+                }
+            }
+            Button("Huỷ", role: .cancel) {}
+        } message: {
+            Text("Hành động này không thể hoàn tác. Các buổi tập liên quan sẽ không còn PT.")
         }
         .sheet(isPresented: $showingEditForm) {
             TrainerFormView(trainer: trainer)

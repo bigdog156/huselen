@@ -4,9 +4,12 @@ import SwiftUI
 
 struct ClientDetailView: View {
     var client: Client
+    @Environment(DataSyncManager.self) private var syncManager
+    @Environment(\.dismiss) private var dismiss
     @State private var showingEditForm = false
     @State private var showingPurchaseForm = false
     @State private var editingPurchase: PackagePurchase?
+    @State private var showDeleteConfirm = false
 
     private var activePurchases: [PackagePurchase] {
         client.purchases.filter { !$0.isExpired && !$0.isFullyUsed }
@@ -38,14 +41,37 @@ struct ClientDetailView: View {
             .padding(.top, 8)
             .padding(.bottom, 24)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Theme.Colors.screenBackground)
         .navigationTitle(client.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Sua") { showingEditForm = true }
-                    .foregroundStyle(Theme.Colors.softOrange)
+                HStack(spacing: 4) {
+                    Button("Sửa") { showingEditForm = true }
+                        .foregroundStyle(Theme.Colors.softOrange)
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(Color.fitCoral)
+                    }
+                }
             }
+        }
+        .confirmationDialog(
+            "Xoá học viên \(client.name)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Xoá học viên", role: .destructive) {
+                Task {
+                    await syncManager.deleteClient(client)
+                    dismiss()
+                }
+            }
+            Button("Huỷ", role: .cancel) {}
+        } message: {
+            Text("Hành động này không thể hoàn tác. Tất cả dữ liệu tập luyện sẽ bị xoá.")
         }
         .sheet(isPresented: $showingEditForm) {
             ClientFormView(client: client)
@@ -129,7 +155,7 @@ private extension ClientDetailView {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
     }
@@ -139,17 +165,17 @@ private extension ClientDetailView {
     var trainingStatsRow: some View {
         HStack(spacing: 10) {
             miniStatCard(
-                title: "Tong buoi",
+                title: "Tổng buổi",
                 value: "\(client.sessions.count)",
                 color: Color.fitIndigo
             )
             miniStatCard(
-                title: "Hoan thanh",
+                title: "Hoàn thành",
                 value: "\(completedSessionsCount)",
                 color: Color.fitGreen
             )
             miniStatCard(
-                title: "Con lai",
+                title: "Còn lại",
                 value: "\(client.remainingSessions)",
                 color: Theme.Colors.mintGreen
             )
@@ -169,7 +195,7 @@ private extension ClientDetailView {
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
     }
@@ -197,23 +223,23 @@ private extension ClientDetailView {
 
     var bodyStatsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FitSectionHeader(title: "Chi so co the", icon: "figure.stand")
+            FitSectionHeader(title: "Chỉ số cơ thể", icon: "figure.stand")
 
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: 10),
                 GridItem(.flexible(), spacing: 10)
             ], spacing: 10) {
                 if client.height > 0 {
-                    bodyStatCell(label: "Chieu cao", value: String(format: "%.1f cm", client.height))
+                    bodyStatCell(label: "Chiều cao", value: String(format: "%.1f cm", client.height))
                 }
                 if client.weight > 0 {
-                    bodyStatCell(label: "Can nang", value: String(format: "%.1f kg", client.weight))
+                    bodyStatCell(label: "Cân nặng", value: String(format: "%.1f kg", client.weight))
                 }
                 if client.bodyFat > 0 {
-                    bodyStatCell(label: "Ty le mo", value: String(format: "%.1f%%", client.bodyFat))
+                    bodyStatCell(label: "Tỷ lệ mỡ", value: String(format: "%.1f%%", client.bodyFat))
                 }
                 if client.muscleMass > 0 {
-                    bodyStatCell(label: "Co bap", value: String(format: "%.1f kg", client.muscleMass))
+                    bodyStatCell(label: "Cơ bắp", value: String(format: "%.1f kg", client.muscleMass))
                 }
             }
         }
@@ -243,7 +269,7 @@ private extension ClientDetailView {
             // Header
             HStack {
                 HStack(spacing: 6) {
-                    Text("Goi PT dang su dung")
+                    Text("Gói PT đang sử dụng")
                         .font(Theme.Fonts.headline())
                         .foregroundStyle(Color.fitTextPrimary)
 
@@ -263,7 +289,7 @@ private extension ClientDetailView {
                 Spacer()
 
                 Button(action: { showingPurchaseForm = true }) {
-                    Text("Mua goi")
+                    Text("Mua gói")
                         .font(Theme.Fonts.caption())
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
@@ -278,8 +304,8 @@ private extension ClientDetailView {
             if activePurchases.isEmpty {
                 FitEmptyState(
                     icon: "ticket",
-                    title: "Chua co goi PT",
-                    subtitle: "Mua goi de bat dau tap luyen"
+                    title: "Chưa có gói PT",
+                    subtitle: "Mua gói để bắt đầu tập luyện"
                 )
             } else {
                 ForEach(activePurchases) { purchase in
@@ -291,7 +317,7 @@ private extension ClientDetailView {
                         Button {
                             editingPurchase = purchase
                         } label: {
-                            Label("Chinh sua goi", systemImage: "pencil")
+                            Label("Chỉnh sửa gói", systemImage: "pencil")
                         }
                     }
                 }
@@ -307,7 +333,7 @@ private extension ClientDetailView {
                     Image(systemName: "ticket.fill")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.Colors.mintGreen)
-                    Text(purchase.package?.name ?? "Goi PT")
+                    Text(purchase.package?.name ?? "Gói PT")
                         .font(Theme.Fonts.subheadline())
                         .fontWeight(.bold)
                         .foregroundStyle(Color.fitTextPrimary)
@@ -329,7 +355,7 @@ private extension ClientDetailView {
                         .foregroundStyle(Color.fitTextSecondary)
                 }
                 Spacer()
-                Text("Con \(purchase.remainingSessions)/\(purchase.totalSessions) buoi")
+                Text("Còn \(purchase.remainingSessions)/\(purchase.totalSessions) buổi")
                     .font(Theme.Fonts.caption())
                     .foregroundStyle(
                         purchase.remainingSessions > 0 ? Color.fitGreen : Color.fitCoral
@@ -360,7 +386,7 @@ private extension ClientDetailView {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
     }
@@ -369,13 +395,13 @@ private extension ClientDetailView {
 
     var expiredPackagesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FitSectionHeader(title: "Goi da ket thuc", icon: "clock.arrow.circlepath")
+            FitSectionHeader(title: "Gói đã kết thúc", icon: "clock.arrow.circlepath")
 
             ForEach(expiredPurchases) { purchase in
                 NavigationLink(destination: PackageSessionHistoryView(purchase: purchase)) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(purchase.package?.name ?? "Goi PT")
+                            Text(purchase.package?.name ?? "Gói PT")
                                 .font(Theme.Fonts.subheadline())
                                 .foregroundStyle(Color.fitTextPrimary)
                             Text("Mua: \(purchase.purchaseDate, format: .dateTime.day().month().year())")
@@ -384,15 +410,15 @@ private extension ClientDetailView {
                         }
                         Spacer()
                         if purchase.isFullyUsed {
-                            FitBadge(text: "Da het buoi", color: Color.fitGreen)
+                            FitBadge(text: "Đã hết buổi", color: Color.fitGreen)
                         } else {
-                            FitBadge(text: "Het han", color: Color.fitCoral)
+                            FitBadge(text: "Hết hạn", color: Color.fitCoral)
                         }
                     }
                     .padding(12)
                     .background(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(Color(.systemBackground))
+                            .fill(Color.fitCard)
                     )
                 }
                 .buttonStyle(.plain)
@@ -414,10 +440,10 @@ private extension ClientDetailView {
             chips.append(BodyChip(label: "CN:", value: String(format: "%.0f kg", client.weight)))
         }
         if client.bodyFat > 0 {
-            chips.append(BodyChip(label: "Mo:", value: String(format: "%.0f%%", client.bodyFat)))
+            chips.append(BodyChip(label: "Mỡ:", value: String(format: "%.0f%%", client.bodyFat)))
         }
         if client.muscleMass > 0 {
-            chips.append(BodyChip(label: "Co:", value: String(format: "%.0f kg", client.muscleMass)))
+            chips.append(BodyChip(label: "Cơ:", value: String(format: "%.0f kg", client.muscleMass)))
         }
         return chips
     }

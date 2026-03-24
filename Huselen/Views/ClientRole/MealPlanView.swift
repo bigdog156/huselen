@@ -88,7 +88,7 @@ struct MealPlanView: View {
             .padding(.top, 12)
             .padding(.bottom, 32)
         }
-        .background(Color(.systemBackground))
+        .background(Theme.Colors.screenBackground)
         .refreshable { await syncManager.refresh() }
         .sheet(isPresented: $showAddFood) {
             AddFoodView(date: selectedDate)
@@ -191,7 +191,7 @@ struct MealPlanView: View {
                                             .fill(Color.fitCard)
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                    .strokeBorder(Color(red: 0.898, green: 0.906, blue: 0.922), lineWidth: 1.5)
+                                                    .strokeBorder(Theme.Colors.separator, lineWidth: 1.5)
                                             )
                                     }
 
@@ -221,9 +221,9 @@ struct MealPlanView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color(red: 0.133, green: 0.773, blue: 0.369),
-                                 Color(red: 0.086, green: 0.639, blue: 0.290),
-                                 Color(red: 0.024, green: 0.588, blue: 0.412)],
+                        colors: [Color.fitGreen,
+                                 Color.fitGreenDark,
+                                 Color.fitGreenDark],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )

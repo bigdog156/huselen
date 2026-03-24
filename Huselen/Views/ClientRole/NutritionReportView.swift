@@ -70,7 +70,7 @@ struct NutritionReportView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 32)
             }
-            .background(Color(.systemBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationTitle("Báo cáo dinh dưỡng")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -277,7 +277,7 @@ struct NutritionReportView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color(red: 0.878, green: 0.882, blue: 0.886))
+                        .fill(Color.fitCard)
                         .frame(height: 8)
                     Capsule()
                         .fill(color)
@@ -306,10 +306,10 @@ struct NutritionReportView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(Color(red: 1.0, green: 0.984, blue: 0.922))
+        .background(Theme.Colors.warmYellow.opacity(0.15))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color(red: 0.988, green: 0.831, blue: 0.302), lineWidth: 1)
+                .strokeBorder(Theme.Colors.warmYellow.opacity(0.6), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }

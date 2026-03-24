@@ -54,7 +54,7 @@ struct MealCaptureFlowView: View {
 
     private var analyzingStep: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Theme.Colors.screenBackground.ignoresSafeArea()
 
             VStack(spacing: 24) {
                 // Photo preview
@@ -178,7 +178,7 @@ struct MealCaptureFlowView: View {
                             .padding(12)
                             .background(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                                    .stroke(Theme.Colors.separator, lineWidth: 1)
                             )
                     }
                     .padding(.horizontal, 16)

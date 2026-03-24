@@ -66,7 +66,7 @@ struct MySessionsView: View {
                     .padding(.bottom, 32)
             }
         }
-        .background(Color(.systemBackground))
+        .background(Theme.Colors.screenBackground)
         .refreshable { await syncManager.refresh() }
         .sheet(item: $selectedSession) { session in
             ClientSessionDetailSheet(session: session)
@@ -207,7 +207,7 @@ struct MySessionsView: View {
                 .font(.system(size: 16))
             Text("Streak: \(streakDays) ngày liên tiếp")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Color(red: 0.804, green: 0.396, blue: 0.031))
+                .foregroundStyle(Color.fitOrange)
             Spacer()
             Text("🌟")
                 .font(.system(size: 16))
@@ -216,10 +216,10 @@ struct MySessionsView: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(red: 1.0, green: 0.984, blue: 0.894))
+                .fill(Theme.Colors.warmYellow.opacity(0.15))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(Color(red: 0.992, green: 0.847, blue: 0.318), lineWidth: 1)
+                        .strokeBorder(Theme.Colors.warmYellow.opacity(0.6), lineWidth: 1)
                 )
         )
     }
@@ -397,15 +397,15 @@ struct MySessionsView: View {
 
 // MARK: - Session Detail Sheet
 
-private struct ClientSessionDetailSheet: View {
+struct ClientSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var session: TrainingGymSession
 
     private var statusColor: Color {
-        if session.isCompleted { return Color(red: 0.133, green: 0.773, blue: 0.369) }
-        if session.isCheckedIn { return .orange }
-        if session.clientCheckInPhotoURL != nil { return Color(red: 0.388, green: 0.400, blue: 0.945) }
-        return Color(red: 0.388, green: 0.400, blue: 0.945)
+        if session.isCompleted { return Color.fitGreen }
+        if session.isCheckedIn { return Color.fitOrange }
+        if session.clientCheckInPhotoURL != nil { return Color.fitIndigo }
+        return Color.fitIndigo
     }
 
     var body: some View {
@@ -441,26 +441,26 @@ private struct ClientSessionDetailSheet: View {
                         HStack(spacing: 12) {
                             ZStack {
                                 Circle()
-                                    .fill(Color(red: 1.0, green: 0.557, blue: 0.176).opacity(0.12))
+                                    .fill(Theme.Colors.softOrange.opacity(0.12))
                                     .frame(width: 42, height: 42)
                                 Image(systemName: "figure.strengthtraining.traditional")
                                     .font(.system(size: 18))
-                                    .foregroundStyle(Color(red: 1.0, green: 0.557, blue: 0.176))
+                                    .foregroundStyle(Theme.Colors.softOrange)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Personal Trainer")
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                    .foregroundStyle(Color.fitTextSecondary)
                                 Text(session.trainer?.name ?? "Chưa gán PT")
                                     .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Color(red: 0.102, green: 0.102, blue: 0.102))
+                                    .foregroundStyle(Color.fitTextPrimary)
                             }
                             Spacer()
                         }
                         .padding(14)
                         .background(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(.background)
+                                .fill(Color.fitCard)
                                 .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                         )
 
@@ -474,7 +474,7 @@ private struct ClientSessionDetailSheet: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 default:
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(Color(.systemGray5)).frame(height: 200)
+                                        .fill(Color.fitCard).frame(height: 200)
                                         .overlay(ProgressView())
                                 }
                             }
@@ -484,20 +484,20 @@ private struct ClientSessionDetailSheet: View {
                         if let t = session.clientCheckInTime {
                             HStack(spacing: 8) {
                                 Image(systemName: "camera.fill")
-                                    .foregroundStyle(Color(red: 0.388, green: 0.400, blue: 0.945))
+                                    .foregroundStyle(Color.fitIndigo)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Bạn đã check-in")
                                         .font(.system(size: 14, weight: .semibold))
                                     Text("lúc \(t.formatted(date: .omitted, time: .shortened))")
                                         .font(.system(size: 12))
-                                        .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                        .foregroundStyle(Color.fitTextSecondary)
                                 }
                                 Spacer()
                             }
                             .padding(14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color(red: 0.388, green: 0.400, blue: 0.945).opacity(0.08))
+                                    .fill(Color.fitIndigo.opacity(0.08))
                             )
                         }
 
@@ -505,20 +505,20 @@ private struct ClientSessionDetailSheet: View {
                         if session.isCheckedIn, let t = session.checkInTime {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.shield.fill")
-                                    .foregroundStyle(Color(red: 0.133, green: 0.773, blue: 0.369))
+                                    .foregroundStyle(Color.fitGreen)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("PT đã xác nhận")
                                         .font(.system(size: 14, weight: .semibold))
                                     Text("lúc \(t.formatted(date: .omitted, time: .shortened))")
                                         .font(.system(size: 12))
-                                        .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                        .foregroundStyle(Color.fitTextSecondary)
                                 }
                                 Spacer()
                             }
                             .padding(14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color(red: 0.133, green: 0.773, blue: 0.369).opacity(0.08))
+                                    .fill(Color.fitGreen.opacity(0.08))
                             )
                         }
 
@@ -526,16 +526,16 @@ private struct ClientSessionDetailSheet: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label("Ghi chú", systemImage: "note.text")
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                    .foregroundStyle(Color.fitTextSecondary)
                                 Text(session.notes)
                                     .font(.system(size: 14))
-                                    .foregroundStyle(Color(red: 0.420, green: 0.447, blue: 0.502))
+                                    .foregroundStyle(Color.fitTextSecondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(.background)
+                                    .fill(Color.fitCard)
                                     .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                             )
                         }
@@ -543,7 +543,7 @@ private struct ClientSessionDetailSheet: View {
                     .padding(16)
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Theme.Colors.screenBackground)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

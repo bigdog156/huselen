@@ -36,7 +36,7 @@ enum AppColorScheme: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "Theo hệ thống"
+        case .system: return "Hệ thống"
         case .light:  return "Sáng"
         case .dark:   return "Tối"
         }

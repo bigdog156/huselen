@@ -85,7 +85,7 @@ struct MyBodyStatsView: View {
                 }
             }
         }
-        .background(Color(.systemBackground))
+        .background(Theme.Colors.screenBackground)
         .refreshable {
             await syncManager.refresh()
             await syncManager.fetchBodyStatLogs()
@@ -162,7 +162,7 @@ struct MyBodyStatsView: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
     }
@@ -403,7 +403,7 @@ struct MyBodyStatsView: View {
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(.systemBackground))
+                        .fill(Color.fitCard)
                         .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
                 )
             }
@@ -448,7 +448,7 @@ struct MyBodyStatsView: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(.systemBackground))
+                        .fill(Color.fitCard)
                         .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
                 )
             }
@@ -541,7 +541,7 @@ struct MyBodyStatsView: View {
                     .padding(14)
                     .background(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(.systemBackground))
+                            .fill(Color.fitCard)
                             .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
                     )
                 }

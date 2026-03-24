@@ -11,6 +11,12 @@ struct ClientCheckInView: View {
     @State private var checkedInSession: TrainingGymSession?
     @State private var pendingSession: TrainingGymSession?
     @State private var showHistory = false
+
+    // MARK: - Schedule state
+    @State private var selectedDate = Date()
+    @State private var currentMonth = Date()
+    @State private var selectedSession: TrainingGymSession?
+    private let cal = Calendar.current
     // MARK: - Session helpers
 
     private var todaySessions: [TrainingGymSession] {
@@ -44,6 +50,27 @@ struct ClientCheckInView: View {
         StreakCalculator.sessionsThisWeek(from: syncManager.sessions)
     }
 
+    // MARK: - Schedule helpers
+
+    private var allSessions: [TrainingGymSession] {
+        syncManager.sessions.sorted { $0.scheduledDate < $1.scheduledDate }
+    }
+
+    private func sessions(for date: Date) -> [TrainingGymSession] {
+        allSessions.filter { cal.isDate($0.scheduledDate, inSameDayAs: date) }
+    }
+
+    private var selectedDaySessions: [TrainingGymSession] {
+        sessions(for: selectedDate)
+    }
+
+    private var scheduleMonthLabel: String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "vi_VN")
+        df.dateFormat = "MMMM yyyy"
+        return df.string(from: currentMonth).capitalized
+    }
+
     private var recentCheckIns: [TrainingGymSession] {
         syncManager.sessions
             .filter { $0.clientCheckInPhotoURL != nil || $0.isCompleted }
@@ -70,7 +97,8 @@ struct ClientCheckInView: View {
                 }
 
                 statsRowView
-                miniCalendarSection
+                scheduleCalendarSection
+                scheduleSessionList
                 milestoneBadgesSection
                 historySection
             }
@@ -78,7 +106,7 @@ struct ClientCheckInView: View {
             .padding(.top, 12)
             .padding(.bottom, 32)
         }
-        .background(Color(.systemBackground))
+        .background(Theme.Colors.screenBackground)
         .task { await syncManager.refresh() }
         .refreshable { await syncManager.refresh() }
         .fullScreenCover(isPresented: $showCamera) {
@@ -105,6 +133,9 @@ struct ClientCheckInView: View {
         .overlay { if isProcessing { processingOverlay } }
         .sheet(isPresented: $showHistory) {
             ClientCheckInHistoryView()
+        }
+        .sheet(item: $selectedSession) { session in
+            ClientSessionDetailSheet(session: session)
         }
     }
 
@@ -304,15 +335,15 @@ struct ClientCheckInView: View {
                 emoji: "🔥",
                 value: "\(streakDays)",
                 label: "Ngày streak",
-                valueColor: Color(red: 0.918, green: 0.345, blue: 0.047),
-                bg: Color(red: 1.0, green: 0.969, blue: 0.929)
+                valueColor: Color.fitOrange,
+                bg: Theme.Colors.warmYellow.opacity(0.15)
             )
             statCard(
                 icon: "figure.run",
                 value: "\(sessionsThisWeek)",
                 label: "Tuần này",
                 valueColor: Color.fitGreen,
-                bg: Color(red: 0.941, green: 0.992, blue: 0.957)
+                bg: Color.fitGreenSoft
             )
         }
     }
@@ -342,85 +373,282 @@ struct ClientCheckInView: View {
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(bg))
     }
 
-    // MARK: - Mini Calendar
+    // MARK: - Schedule Calendar
 
-    private var checkInDates: Set<Int> {
-        let cal = Calendar.current
-        return Set(syncManager.sessions.filter { session in
-            (session.clientCheckInPhotoURL != nil || session.isCompleted) &&
-            cal.isDate(session.scheduledDate, equalTo: Date(), toGranularity: .month)
-        }.map { cal.component(.day, from: $0.scheduledDate) })
-    }
+    private var scheduleCalendarSection: some View {
+        VStack(spacing: 8) {
+            // Month navigation
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentMonth = cal.date(byAdding: .month, value: -1, to: currentMonth) ?? currentMonth
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.fitCard))
+                }
 
-    private var miniCalendarSection: some View {
-        let cal = Calendar.current
-        let today = Date()
-        let todayDay = cal.component(.day, from: today)
-        let range = cal.range(of: .day, in: .month, for: today)!
-        let firstWeekday = cal.component(.weekday, from: cal.date(from: cal.dateComponents([.year, .month], from: today))!)
-        // Adjust so Monday=1 ... Sunday=7 -> Vietnamese week starts Monday
-        // Calendar weekday: 1=CN, 2=T2 ... 7=T7
-        let leadingSpaces = (firstWeekday - 1 + 7) % 7  // CN=0 offset when starting from CN
-        let weekdays = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"]
-        let monthFormatter: DateFormatter = {
-            let f = DateFormatter()
-            f.locale = Locale(identifier: "vi_VN")
-            f.dateFormat = "MMMM yyyy"
-            return f
-        }()
+                Spacer()
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(monthFormatter.string(from: today).capitalized)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.fitTextPrimary)
+                Text(scheduleMonthLabel)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.fitTextPrimary)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        currentMonth = cal.date(byAdding: .month, value: 1, to: currentMonth) ?? currentMonth
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.fitTextSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.fitCard))
+                }
+            }
+            .padding(.horizontal, 8)
 
             // Weekday headers
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
-                ForEach(weekdays, id: \.self) { day in
-                    Text(day)
-                        .font(.system(size: 10, weight: .semibold))
+            HStack(spacing: 0) {
+                ForEach(["CN", "T2", "T3", "T4", "T5", "T6", "T7"], id: \.self) { d in
+                    Text(d)
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.fitTextTertiary)
                         .frame(maxWidth: .infinity)
                 }
+            }
+            .padding(.horizontal, 4)
 
-                // Leading empty cells
-                ForEach(0..<leadingSpaces, id: \.self) { _ in
-                    Color.clear.frame(height: 32)
-                }
-
-                // Day cells
-                ForEach(Array(range), id: \.self) { day in
-                    ZStack {
-                        if checkInDates.contains(day) {
-                            Circle()
-                                .fill(Color.fitGreen)
-                                .frame(width: 30, height: 30)
-                        }
-
-                        if day == todayDay && !checkInDates.contains(day) {
-                            Circle()
-                                .strokeBorder(Color.fitGreen, lineWidth: 2)
-                                .frame(width: 30, height: 30)
-                        }
-
-                        Text("\(day)")
-                            .font(.system(size: 13, weight: checkInDates.contains(day) ? .bold : .medium))
-                            .foregroundStyle(
-                                checkInDates.contains(day)
-                                    ? .white
-                                    : (day == todayDay ? Color.fitGreen : Color.fitTextPrimary)
-                            )
+            // Day grid
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 4) {
+                ForEach(generateMonthDays(), id: \.self) { date in
+                    if let date {
+                        scheduleDayCell(date)
+                    } else {
+                        Color.clear.frame(height: 38)
                     }
-                    .frame(height: 32)
                 }
             }
+            .padding(.horizontal, 4)
         }
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.systemBackground))
+                .fill(Color.fitCard)
                 .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
         )
+    }
+
+    private func scheduleDayCell(_ date: Date) -> some View {
+        let isToday    = cal.isDateInToday(date)
+        let isSelected = cal.isDate(date, inSameDayAs: selectedDate)
+        let isCurrentM = cal.isDate(date, equalTo: currentMonth, toGranularity: .month)
+        let daySess    = sessions(for: date)
+        let hasSession = !daySess.isEmpty
+        let photoURL   = daySess.compactMap { $0.clientCheckInPhotoURL }.first.flatMap { URL(string: $0) }
+        let hasPhoto   = photoURL != nil
+
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedDate = date
+            }
+        } label: {
+            ZStack {
+                if let url = photoURL {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFill()
+                                .clipShape(Circle())
+                        } else {
+                            Circle().fill(Color.fitIndigo.opacity(0.15))
+                        }
+                    }
+                    .overlay(Color.black.opacity(isSelected ? 0.15 : 0.3).clipShape(Circle()))
+                } else if isToday || isSelected {
+                    Circle().fill(Color.fitGreen)
+                } else if hasSession {
+                    Circle().fill(Color.fitGreen.opacity(0.1))
+                }
+
+                if isSelected {
+                    Circle()
+                        .strokeBorder(hasPhoto ? .white : Color.fitGreen, lineWidth: 2.5)
+                }
+
+                Text(date.formatted(.dateTime.day()))
+                    .font(.system(size: 13, weight: isToday || isSelected || hasPhoto ? .bold : .medium))
+                    .foregroundStyle(
+                        hasPhoto ? .white :
+                        isToday || isSelected ? .white :
+                        hasSession ? Color.fitGreen :
+                        !isCurrentM ? Color.fitTextTertiary.opacity(0.4) :
+                        Color.fitTextPrimary
+                    )
+                    .shadow(color: hasPhoto ? .black.opacity(0.5) : .clear, radius: 1, y: 1)
+            }
+            .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func generateMonthDays() -> [Date?] {
+        guard let interval = cal.dateInterval(of: .month, for: currentMonth) else { return [] }
+        let first = interval.start
+        let firstWeekday = cal.component(.weekday, from: first)
+        let daysInMonth  = cal.range(of: .day, in: .month, for: currentMonth)?.count ?? 30
+
+        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
+        for i in 0..<daysInMonth {
+            days.append(cal.date(byAdding: .day, value: i, to: first))
+        }
+        return days
+    }
+
+    // MARK: - Schedule Session List
+
+    private var scheduleSessionList: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text(selectedDate, format: .dateTime.weekday(.wide).day().month(.wide))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.fitTextPrimary)
+                if !selectedDaySessions.isEmpty {
+                    Text("· \(selectedDaySessions.count) buổi")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.fitTextSecondary)
+                }
+            }
+
+            if selectedDaySessions.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(Color.fitTextTertiary)
+                        Text("Không có buổi tập")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.fitTextTertiary)
+                    }
+                    .padding(.vertical, 24)
+                    Spacer()
+                }
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.fitCard))
+            } else {
+                ForEach(selectedDaySessions) { session in
+                    scheduleSessionCard(session)
+                }
+            }
+        }
+    }
+
+    private func scheduleSessionCard(_ session: TrainingGymSession) -> some View {
+        let start = session.scheduledDate.formatted(date: .omitted, time: .shortened)
+        let end   = session.endDate.formatted(date: .omitted, time: .shortened)
+        let accentColor = session.isCompleted ? Color.fitGreen : (session.isCheckedIn ? Color.orange : (session.clientCheckInPhotoURL != nil ? Color.fitIndigo : Color.fitGreen))
+
+        return Button { selectedSession = session } label: {
+            HStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(accentColor)
+                    .frame(width: 4)
+                    .padding(.vertical, 4)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("\(start) – \(end)")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.fitTextPrimary)
+                            Spacer()
+                            scheduleSessionBadge(session)
+                        }
+                        HStack(spacing: 6) {
+                            Text("PT: \(session.trainer?.name ?? "N/A")")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.fitTextSecondary)
+
+                            if session.clientCheckInTime != nil {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 9))
+                                    Text(session.clientCheckInTime!, format: .dateTime.hour().minute())
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                                .foregroundStyle(Color.fitIndigo)
+                            }
+                        }
+                    }
+
+                    if let urlStr = session.clientCheckInPhotoURL, let url = URL(string: urlStr) {
+                        AsyncImage(url: url) { phase in
+                            if case .success(let img) = phase {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.fitCard
+                                    .overlay(
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(Color.fitTextTertiary.opacity(0.5))
+                                    )
+                            }
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(accentColor.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.fitCard)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func scheduleSessionBadge(_ session: TrainingGymSession) -> some View {
+        if session.isCompleted {
+            Text("Hoàn thành")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitGreen))
+        } else if session.isCheckedIn {
+            Text("Đang tập")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.orange))
+        } else if session.clientCheckInPhotoURL != nil {
+            Text("Đã gửi ảnh")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitIndigo))
+        } else {
+            Text("Sắp tới")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.fitTextSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.fitCard.opacity(1.5)))
+                .overlay(Capsule().strokeBorder(Color.fitTextTertiary.opacity(0.4), lineWidth: 1))
+        }
     }
 
     // MARK: - Milestone Badges
